@@ -10,11 +10,15 @@ import { transcribeHandwriting, fetchTTSAudio, generateNewsWeatherBriefing, prel
 import { SleepService } from './services/sleepService';
 import { useWakeWord } from './hooks/useWakeWord';
 import { AppMode, Alarm, Settings as SettingsType, SleepEvent } from './types';
+import { DEFAULT_ALARM_AUDIO } from './constants/defaultAudio';
 
 // ==================================================================================
 // CONFIGURATION: DEFAULT ALARM SOUND
 // ==================================================================================
-const DEFAULT_ALARM_URL = "https://s17.aconvert.com/convert/p3r68-cdx67/kke26-g7pf4.mp3";
+// If the Base64 string in constants/defaultAudio.ts is valid (long enough), use it.
+// Otherwise, fallback to the external URL for the demo.
+const FALLBACK_URL = "https://s17.aconvert.com/convert/p3r68-cdx67/kke26-g7pf4.mp3";
+const DEFAULT_ALARM_SOURCE = DEFAULT_ALARM_AUDIO.length > 200 ? DEFAULT_ALARM_AUDIO : FALLBACK_URL;
 // ==================================================================================
 
 const App: React.FC = () => {
@@ -195,7 +199,7 @@ const App: React.FC = () => {
 
   const playAudioFileAlarm = () => {
     if (alarmAudioRef.current) return;
-    const audioSource = settings.customAlarmAudio || DEFAULT_ALARM_URL;
+    const audioSource = settings.customAlarmAudio || DEFAULT_ALARM_SOURCE;
     const audio = new Audio(audioSource);
     audio.loop = true;
     audio.volume = settings.alarmVolume;
