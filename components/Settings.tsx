@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Settings as SettingsType, ThemeColor } from '../types';
 import { fetchTTSAudio, voicePreviewCache } from '../services/geminiService';
 
@@ -31,6 +31,8 @@ const INTEREST_OPTIONS = [
   "Finance", "Sports", "Gaming", "Art", "Health", "Space"
 ];
 
+const TABS = ['PROFILE', 'ALARM', 'SYSTEM', 'NOVA AI'];
+
 const Settings: React.FC<SettingsProps> = ({ 
   settings, 
   alarmTime, 
@@ -40,18 +42,28 @@ const Settings: React.FC<SettingsProps> = ({
   onClose,
   onStartSleep
 }) => {
-  const themes: ThemeColor[] = ['cyan', 'amber', 'emerald', 'rose'];
-  // ONLY ZEPHYR IS ALLOWED
-  const voice = 'Zephyr';
-
+  const [activeTab, setActiveTab] = useState('PROFILE');
   const [locationQuery, setLocationQuery] = useState(settings.location);
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
-  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  
+  // Voice Preview State
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const voice = 'Zephyr'; // LOCKED
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Theme Colors Helper
+  const getThemeColor = (opacity = 1) => {
+    switch(settings.theme) {
+      case 'cyan': return `rgba(34, 211, 238, ${opacity})`;
+      case 'amber': return `rgba(251, 191, 36, ${opacity})`;
+      case 'emerald': return `rgba(52, 211, 153, ${opacity})`;
+      case 'rose': return `rgba(251, 113, 133, ${opacity})`;
+      default: return `rgba(255, 255, 255, ${opacity})`;
+    }
+  };
 
   const handleLocationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -64,14 +76,6 @@ const Settings: React.FC<SettingsProps> = ({
     setLocationQuery(city);
     onUpdateSettings({ location: city });
     setShowLocationSuggestions(false);
-  };
-
-  const toggleInterest = (interest: string) => {
-    const current = settings.interests || [];
-    const updated = current.includes(interest) 
-      ? current.filter(i => i !== interest)
-      : [...current, interest];
-    onUpdateSettings({ interests: updated });
   };
 
   const detectLocation = () => {
@@ -91,301 +95,363 @@ const Settings: React.FC<SettingsProps> = ({
       },
       (error) => {
         console.error("Error detecting location:", error);
-        const errorMsg = error.message.includes("policy") 
-          ? "Permission blocked. Please type location manually." 
-          : error.message;
-        
-        alert(`Location Error: ${errorMsg}`);
+        alert(`Location unavailable: ${error.message}`);
         setIsDetectingLocation(false);
       }
     );
   };
 
   const playVoicePreview = async () => {
-    if (isLoadingPreview || previewingVoice) return;
+    if (isPlayingPreview) return;
+    setIsPlayingPreview(true);
     
-    setIsLoadingPreview(true);
-    setPreviewingVoice(voice);
-    // Ensure settings are synced to Zephyr
-    if (settings.voiceName !== voice) {
-      onUpdateSettings({ voiceName: voice });
-    }
+    // Ensure synced
+    if (settings.voiceName !== voice) onUpdateSettings({ voiceName: voice });
 
     try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      
+      if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') {
-        await ctx.resume();
-      }
-      
-      // 1. Try to get from Cache First
-      let buffer = voicePreviewCache.get(voice);
+      if (ctx.state === 'suspended') await ctx.resume();
 
-      // 2. If not in cache, fetch it now
+      let buffer = voicePreviewCache.get(voice);
       if (!buffer) {
-         console.log(`Cache miss for ${voice}, fetching live...`);
-         const text = `I am Nova. System online.`;
-         buffer = await fetchTTSAudio(text, ctx, voice);
-         voicePreviewCache.set(voice, buffer); // Save for next time
-      } else {
-         console.log(`Cache hit for ${voice}`);
+         buffer = await fetchTTSAudio("I am Nova. System online.", ctx, voice);
+         voicePreviewCache.set(voice, buffer);
       }
       
       const source = ctx.createBufferSource();
       source.buffer = buffer!;
       source.connect(ctx.destination);
       source.start();
-      
-      source.onended = () => {
-        setPreviewingVoice(null);
-        setIsLoadingPreview(false);
-      };
+      source.onended = () => setIsPlayingPreview(false);
     } catch (e) {
-      console.error("Preview failed", e);
-      setPreviewingVoice(null);
-      setIsLoadingPreview(false);
-      alert("Audio preview failed. Check console for details.");
+      console.error(e);
+      setIsPlayingPreview(false);
     }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 4 * 1024 * 1024) {
-        alert("File too large. Please use a file smaller than 4MB.");
-        return;
-      }
-
+      if (file.size > 4 * 1024 * 1024) return alert("Max file size 4MB");
       const reader = new FileReader();
-      reader.onload = (evt) => {
-        const result = evt.target?.result as string;
-        onUpdateSettings({ customAlarmAudio: result });
-      };
+      reader.onload = (evt) => onUpdateSettings({ customAlarmAudio: evt.target?.result as string });
       reader.readAsDataURL(file);
     }
-  };
-
-  const clearCustomAudio = () => {
-    onUpdateSettings({ customAlarmAudio: null });
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const filteredLocations = LOCATIONS.filter(c => c.toLowerCase().includes(locationQuery.toLowerCase()));
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 backdrop-blur-md shadow-2xl my-auto">
-        <h2 className="text-2xl font-digital text-white tracking-widest mb-8 text-center">SYSTEM CONFIG</h2>
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
+      {/* BACKGROUND GRID */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
 
-        <div className="space-y-6">
+      <div 
+        className="relative w-full max-w-2xl bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        style={{ boxShadow: `0 0 50px ${getThemeColor(0.1)}` }}
+      >
+        
+        {/* HEADER */}
+        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-black/40">
+           <div className="flex items-center gap-3">
+              <div className="w-2 h-8" style={{ backgroundColor: getThemeColor() }}></div>
+              <h2 className="text-2xl font-digital text-white tracking-widest">
+                SYSTEM <span style={{ color: getThemeColor() }}>CONFIG</span>
+              </h2>
+           </div>
+           <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+           </button>
+        </div>
 
-          <div className="space-y-4 pb-6 border-b border-zinc-800">
-            <label className="text-gray-500 text-xs font-digital tracking-widest block">USER PROFILE</label>
-            <input 
-              type="text" 
-              value={settings.userName || ''}
-              onChange={(e) => onUpdateSettings({ userName: e.target.value })}
-              placeholder="Your Name"
-              className="w-full bg-black/40 border border-zinc-800 rounded-xl p-3 text-white focus:border-white focus:outline-none"
-            />
-            <div className="flex flex-wrap gap-2">
-              {INTEREST_OPTIONS.map(interest => (
-                <button
-                  key={interest}
-                  onClick={() => toggleInterest(interest)}
-                  className={`px-2 py-1 rounded text-[10px] font-digital tracking-wider border transition-all ${
-                    (settings.interests || []).includes(interest)
-                      ? 'bg-white text-black border-white'
-                      : 'bg-transparent text-gray-500 border-zinc-800'
-                  }`}
-                >
-                  {interest}
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-gray-500 text-xs font-digital tracking-widest block">ALARM SETTINGS</label>
-            <div className="flex items-center justify-between bg-black/40 p-4 rounded-xl border border-zinc-800 mb-2">
-              <input 
-                type="time" 
-                value={alarmTime}
-                onChange={(e) => onUpdateAlarm(e.target.value, isAlarmEnabled)}
-                className="bg-transparent text-3xl font-digital text-white focus:outline-none w-full"
-              />
-              <button 
-                onClick={() => onUpdateAlarm(alarmTime, !isAlarmEnabled)}
-                className={`px-4 py-2 rounded-lg font-digital text-xs tracking-wider transition-colors ${isAlarmEnabled ? 'bg-white text-black' : 'bg-zinc-800 text-gray-500'}`}
-              >
-                {isAlarmEnabled ? 'ON' : 'OFF'}
-              </button>
-            </div>
-            
-            <div className="bg-black/40 p-4 rounded-xl border border-zinc-800 flex flex-col gap-2">
-                <span className="text-xs text-gray-400 font-digital">ALARM SOUND SOURCE</span>
-                <div className="flex items-center gap-2">
-                    <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs rounded-lg text-white font-digital tracking-wider transition-colors"
-                    >
-                        {settings.customAlarmAudio ? 'CHANGE AUDIO FILE' : 'UPLOAD MP3 FILE'}
-                    </button>
-                    {settings.customAlarmAudio && (
-                        <button 
-                             onClick={clearCustomAudio}
-                             className="px-3 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 rounded-lg text-xs"
-                             title="Reset to Default"
-                        >
-                            RESET
-                        </button>
-                    )}
-                </div>
-                <input 
-                    type="file" 
-                    accept="audio/*" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    onChange={handleFileUpload} 
-                />
-                <div className="text-[10px] text-gray-600 truncate">
-                    {settings.customAlarmAudio ? 'Using Custom Uploaded Audio' : 'Using Default System Audio'}
-                </div>
-            </div>
-          </div>
-
-          <div className="space-y-2 relative">
-            <label className="text-gray-500 text-xs font-digital tracking-widest block">LOCATION</label>
-            <div className="flex gap-2">
-              <input 
-                type="text" 
-                value={locationQuery}
-                onChange={handleLocationChange}
-                onFocus={() => setShowLocationSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
-                placeholder="Amsterdam, or tap detect..."
-                className="w-full bg-black/40 border border-zinc-800 rounded-xl p-3 text-white focus:border-white focus:outline-none transition-colors"
-              />
-              <button 
-                onClick={detectLocation}
-                disabled={isDetectingLocation}
-                className="px-3 bg-zinc-800 border border-zinc-700 rounded-xl hover:bg-white hover:text-black transition-colors"
-                title="Detect Current Location"
-              >
-                {isDetectingLocation ? (
-                   <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                )}
-              </button>
-            </div>
-            
-            {showLocationSuggestions && locationQuery && filteredLocations.length > 0 && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-900 border border-zinc-700 rounded-xl z-10 max-h-40 overflow-y-auto shadow-xl">
-                 {filteredLocations.map(city => (
-                   <div 
-                     key={city} 
-                     onClick={() => selectLocation(city)}
-                     className="px-4 py-2 hover:bg-zinc-800 cursor-pointer text-sm text-gray-300 hover:text-white border-b border-zinc-800/50 last:border-0"
-                   >
-                     {city}
-                   </div>
-                 ))}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-gray-500 text-xs font-digital tracking-widest block">TEMPERATURE UNIT</label>
-            <div className="flex bg-black/40 border border-zinc-800 rounded-xl p-1 w-full max-w-[150px]">
-              <button
-                onClick={() => onUpdateSettings({ temperatureUnit: 'C' })}
-                className={`flex-1 py-2 rounded-lg font-digital text-sm transition-colors ${settings.temperatureUnit === 'C' ? 'bg-zinc-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                °C
-              </button>
-              <button
-                onClick={() => onUpdateSettings({ temperatureUnit: 'F' })}
-                className={`flex-1 py-2 rounded-lg font-digital text-sm transition-colors ${settings.temperatureUnit === 'F' ? 'bg-zinc-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                °F
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-gray-500 text-xs font-digital tracking-widest block">NOVA VOICE MODEL</label>
+        {/* TABS */}
+        <div className="flex border-b border-white/5 bg-white/[0.02]">
+          {TABS.map(tab => (
             <button
-                onClick={playVoicePreview}
-                disabled={isLoadingPreview && previewingVoice !== voice}
-                className="w-full py-3 bg-white/5 border border-white/20 rounded-xl text-white font-digital tracking-wider hover:bg-white/10 transition-all flex items-center justify-between px-4 relative overflow-hidden"
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-4 font-digital text-sm tracking-widest transition-all relative ${activeTab === tab ? 'text-white' : 'text-gray-600 hover:text-gray-400'}`}
             >
-                <span>NOVA SYSTEM VOICE: ZEPHYR</span>
-                {isLoadingPreview ? (
-                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-ping"></div>
-                ) : (
-                    <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/30">ACTIVE</span>
-                )}
+              {tab}
+              {activeTab === tab && (
+                <div 
+                  className="absolute bottom-0 left-0 right-0 h-[2px] shadow-[0_0_10px_currentColor]"
+                  style={{ backgroundColor: getThemeColor() }}
+                ></div>
+              )}
             </button>
-            <p className="text-[10px] text-gray-600 font-mono pl-1">
-                * Voice model restricted to Zephyr for optimal system compatibility.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-gray-500 text-xs font-digital tracking-widest block">INTERFACE THEME</label>
-            <div className="flex gap-4">
-              {themes.map(t => (
-                <button
-                  key={t}
-                  onClick={() => onUpdateSettings({ theme: t })}
-                  className={`w-12 h-12 rounded-full border-2 transition-all ${
-                    settings.theme === t 
-                    ? 'border-white scale-110 shadow-[0_0_15px_rgba(255,255,255,0.3)]' 
-                    : 'border-transparent opacity-50 hover:opacity-100'
-                  }`}
-                  style={{ backgroundColor: `var(--color-${t})` }}
-                >
-                  <div className={`w-full h-full rounded-full bg-${t === 'cyan' ? 'cyan-400' : t === 'amber' ? 'amber-400' : t === 'emerald' ? 'emerald-400' : 'rose-400'}`}></div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-gray-500 text-xs font-digital tracking-widest block">MODULES</label>
-            <div className="flex items-center justify-between py-2 border-b border-zinc-800">
-              <span className="text-gray-300 font-light text-sm">Sleep Tracking (VAD)</span>
-              <button 
-                onClick={() => onUpdateSettings({ isSleepTrackingEnabled: !settings.isSleepTrackingEnabled })}
-                className={`w-12 h-6 rounded-full transition-colors relative ${settings.isSleepTrackingEnabled ? 'bg-green-500' : 'bg-zinc-700'}`}
-              >
-                <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${settings.isSleepTrackingEnabled ? 'translate-x-6' : ''}`} />
-              </button>
-            </div>
-          </div>
+          ))}
         </div>
 
-        <div className="mt-8 flex flex-col gap-4">
-          <button 
-            onClick={onStartSleep}
-            className="w-full py-4 bg-white text-black font-digital tracking-widest rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
-          >
-             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
-             ENTER SLEEP MODE
-          </button>
+        {/* CONTENT AREA */}
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar relative">
+          
+          {/* --- TAB: PROFILE --- */}
+          {activeTab === 'PROFILE' && (
+            <div className="space-y-8 animate-fadeIn">
+               <div className="space-y-4">
+                  <label className="text-xs font-digital text-gray-500 tracking-widest uppercase">Designation</label>
+                  <input 
+                    type="text" 
+                    value={settings.userName}
+                    onChange={(e) => onUpdateSettings({ userName: e.target.value })}
+                    className="w-full bg-black border border-white/10 rounded-lg p-4 text-white font-mono focus:border-white/30 focus:outline-none transition-all"
+                    placeholder="Enter Name"
+                  />
+               </div>
 
-          <button 
-            onClick={onClose}
-            className="w-full py-4 border border-zinc-800 text-gray-500 font-digital tracking-widest rounded-xl hover:text-white hover:border-white transition-colors"
-          >
-            CLOSE CONFIG
-          </button>
+               <div className="space-y-4">
+                  <label className="text-xs font-digital text-gray-500 tracking-widest uppercase">Interests Database</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {INTEREST_OPTIONS.map(interest => (
+                      <button
+                        key={interest}
+                        onClick={() => {
+                           const current = settings.interests || [];
+                           onUpdateSettings({ 
+                             interests: current.includes(interest) ? current.filter(i => i !== interest) : [...current, interest] 
+                           });
+                        }}
+                        className={`px-4 py-3 rounded-lg text-xs font-digital tracking-wider border transition-all text-left flex items-center justify-between group ${
+                          (settings.interests || []).includes(interest)
+                            ? 'bg-white/10 border-white/30 text-white'
+                            : 'bg-transparent border-white/5 text-gray-500 hover:border-white/20'
+                        }`}
+                      >
+                        {interest}
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          (settings.interests || []).includes(interest) ? 'bg-current shadow-[0_0_5px_currentColor]' : 'bg-transparent'
+                        }`} style={{ color: (settings.interests || []).includes(interest) ? getThemeColor() : 'transparent' }}></div>
+                      </button>
+                    ))}
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* --- TAB: ALARM --- */}
+          {activeTab === 'ALARM' && (
+            <div className="space-y-8 animate-fadeIn">
+               <div className="bg-white/5 border border-white/10 rounded-xl p-6 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-digital text-gray-500 tracking-widest mb-1">ACTIVATION TIME</div>
+                    <input 
+                      type="time" 
+                      value={alarmTime}
+                      onChange={(e) => onUpdateAlarm(e.target.value, isAlarmEnabled)}
+                      className="bg-transparent text-5xl font-digital text-white focus:outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => onUpdateAlarm(alarmTime, !isAlarmEnabled)}
+                    className={`w-16 h-8 rounded-full relative transition-all ${isAlarmEnabled ? 'bg-white' : 'bg-gray-800'}`}
+                  >
+                     <div 
+                       className={`absolute top-1 left-1 w-6 h-6 rounded-full transition-all duration-300 ${isAlarmEnabled ? 'translate-x-8 bg-black' : 'bg-gray-500'}`}
+                     />
+                  </button>
+               </div>
+
+               <div className="space-y-4">
+                  <label className="text-xs font-digital text-gray-500 tracking-widest uppercase">Audio Source</label>
+                  <div className="grid grid-cols-1 gap-4">
+                     {/* DEFAULT */}
+                     <button 
+                       onClick={() => onUpdateSettings({ customAlarmAudio: null })}
+                       className={`p-4 rounded-lg border text-left flex items-center gap-4 transition-all ${!settings.customAlarmAudio ? 'border-white/30 bg-white/5' : 'border-white/5 text-gray-500'}`}
+                     >
+                        <div className="w-10 h-10 rounded bg-white/10 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                        </div>
+                        <div>
+                          <div className="font-digital text-sm text-white">SYSTEM DEFAULT</div>
+                          <div className="text-xs text-gray-500">Polyphonic Melody</div>
+                        </div>
+                     </button>
+
+                     {/* CUSTOM */}
+                     <div className={`p-4 rounded-lg border transition-all ${settings.customAlarmAudio ? 'border-white/30 bg-white/5' : 'border-white/5'}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-4">
+                             <div className="w-10 h-10 rounded bg-white/10 flex items-center justify-center">
+                               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                             </div>
+                             <div>
+                               <div className={`font-digital text-sm ${settings.customAlarmAudio ? 'text-white' : 'text-gray-500'}`}>CUSTOM UPLOAD</div>
+                               <div className="text-xs text-gray-600">{settings.customAlarmAudio ? 'Audio File Loaded' : 'No file selected'}</div>
+                             </div>
+                          </div>
+                          <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-xs font-digital rounded"
+                          >
+                            SELECT
+                          </button>
+                        </div>
+                        <input type="file" accept="audio/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+                     </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* --- TAB: SYSTEM --- */}
+          {activeTab === 'SYSTEM' && (
+            <div className="space-y-8 animate-fadeIn">
+               {/* LOCATION */}
+               <div className="space-y-4">
+                 <label className="text-xs font-digital text-gray-500 tracking-widest uppercase">Geo-Location</label>
+                 <div className="relative flex gap-2">
+                    <input 
+                      type="text" 
+                      value={locationQuery}
+                      onChange={handleLocationChange}
+                      onFocus={() => setShowLocationSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
+                      placeholder="Enter City..."
+                      className="w-full bg-black border border-white/10 rounded-lg p-4 text-white font-mono focus:border-white/30 focus:outline-none"
+                    />
+                    <button 
+                      onClick={detectLocation} 
+                      disabled={isDetectingLocation}
+                      className="px-6 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center relative overflow-hidden group"
+                    >
+                       {isDetectingLocation ? (
+                         <div className="absolute inset-0 bg-white/10 animate-pulse"></div>
+                       ) : (
+                         <svg className="w-5 h-5 text-gray-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                       )}
+                    </button>
+                    {showLocationSuggestions && filteredLocations.length > 0 && (
+                      <div className="absolute top-full left-0 right-14 mt-2 bg-[#0a0a0a] border border-white/20 rounded-lg z-50 max-h-48 overflow-y-auto custom-scrollbar">
+                         {filteredLocations.map(city => (
+                           <div key={city} onClick={() => selectLocation(city)} className="px-4 py-3 hover:bg-white/10 cursor-pointer text-sm text-gray-300 font-mono border-b border-white/5 last:border-0">{city}</div>
+                         ))}
+                      </div>
+                    )}
+                 </div>
+               </div>
+
+               {/* UNITS & THEME */}
+               <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                     <label className="text-xs font-digital text-gray-500 tracking-widest uppercase">Temp Unit</label>
+                     <div className="flex bg-black border border-white/10 rounded-lg p-1">
+                        {['C', 'F'].map(unit => (
+                          <button
+                            key={unit}
+                            onClick={() => onUpdateSettings({ temperatureUnit: unit as 'C' | 'F' })}
+                            className={`flex-1 py-2 rounded text-sm font-digital transition-all ${settings.temperatureUnit === unit ? 'bg-white/20 text-white' : 'text-gray-600'}`}
+                          >
+                            °{unit}
+                          </button>
+                        ))}
+                     </div>
+                  </div>
+
+                  <div className="space-y-3">
+                     <label className="text-xs font-digital text-gray-500 tracking-widest uppercase">Interface Theme</label>
+                     <div className="flex justify-between items-center h-[42px]">
+                        {(['cyan', 'amber', 'emerald', 'rose'] as ThemeColor[]).map(t => (
+                          <button
+                            key={t}
+                            onClick={() => onUpdateSettings({ theme: t })}
+                            className={`w-8 h-8 rounded-full border transition-all duration-300 ${settings.theme === t ? 'scale-125 border-white shadow-[0_0_10px_currentColor]' : 'border-transparent opacity-30 hover:opacity-100'}`}
+                            style={{ backgroundColor: `var(--color-${t})`, color: `var(--color-${t})` }}
+                          />
+                        ))}
+                     </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* --- TAB: NOVA AI --- */}
+          {activeTab === 'NOVA AI' && (
+            <div className="space-y-8 animate-fadeIn">
+               
+               {/* VOICE MODULE LOCK */}
+               <div className="border border-cyan-500/30 bg-cyan-900/10 rounded-xl p-6 relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(34,211,238,0.05)_50%,transparent_75%)] bg-[length:250%_250%] animate-shine pointer-events-none"></div>
+                  <div className="flex items-center justify-between relative z-10">
+                     <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_5px_cyan]"></div>
+                          <span className="text-cyan-400 font-digital tracking-widest text-xs">VOICE MODULE ACTIVE</span>
+                        </div>
+                        <h3 className="text-white font-digital text-2xl tracking-wider">ZEPHYR</h3>
+                        <p className="text-cyan-600/70 text-xs mt-1 font-mono">Neural Text-to-Speech Engine • Locked for Stability</p>
+                     </div>
+                     <button 
+                       onClick={playVoicePreview}
+                       className="w-12 h-12 rounded-full border border-cyan-500/50 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/20 transition-all"
+                     >
+                       {isPlayingPreview ? (
+                         <div className="flex gap-1 h-3 items-end">
+                           <div className="w-1 bg-cyan-400 animate-music-bar-1"></div>
+                           <div className="w-1 bg-cyan-400 animate-music-bar-2"></div>
+                           <div className="w-1 bg-cyan-400 animate-music-bar-3"></div>
+                         </div>
+                       ) : (
+                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                       )}
+                     </button>
+                  </div>
+               </div>
+
+               {/* SLEEP TRACKING */}
+               <div className="space-y-4">
+                 <div className="flex items-center justify-between">
+                    <label className="text-xs font-digital text-gray-500 tracking-widest uppercase">VAD Sleep Analytics</label>
+                    <button 
+                      onClick={() => onUpdateSettings({ isSleepTrackingEnabled: !settings.isSleepTrackingEnabled })}
+                      className={`text-xs font-mono px-2 py-1 rounded border transition-all ${settings.isSleepTrackingEnabled ? 'border-green-500/50 text-green-400 bg-green-500/10' : 'border-red-500/50 text-red-400 bg-red-500/10'}`}
+                    >
+                      {settings.isSleepTrackingEnabled ? 'ENABLED' : 'DISABLED'}
+                    </button>
+                 </div>
+                 <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                    <p className="text-gray-400 text-sm font-light leading-relaxed mb-6">
+                       NOVA uses local microphone processing to detect noise events (snoring, talking) during sleep cycles. No audio is recorded to the cloud.
+                    </p>
+                    <button 
+                      onClick={() => { onClose(); onStartSleep(); }}
+                      className="w-full py-3 bg-white text-black font-digital tracking-widest rounded-lg hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                    >
+                       ENTER SLEEP MODE
+                    </button>
+                 </div>
+               </div>
+
+            </div>
+          )}
         </div>
+
+        {/* FOOTER */}
+        <div className="p-6 border-t border-white/5 bg-black/40 flex justify-between items-center">
+           <span className="text-[10px] text-gray-700 font-digital tracking-widest">NOVA OS v2.4.1</span>
+           <button 
+             onClick={onClose}
+             className="px-8 py-2 border border-white/20 rounded-full text-sm font-digital tracking-widest text-white hover:bg-white hover:text-black transition-all"
+           >
+             CONFIRM
+           </button>
+        </div>
+
       </div>
+      
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+        @keyframes shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+        .animate-shine { animation: shine 3s infinite linear; }
+        .animate-music-bar-1 { height: 100%; animation: bounce 0.5s infinite alternate; }
+        .animate-music-bar-2 { height: 60%; animation: bounce 0.6s infinite alternate; }
+        .animate-music-bar-3 { height: 80%; animation: bounce 0.4s infinite alternate; }
+        @keyframes bounce { from { height: 20%; } to { height: 100%; } }
+      `}</style>
     </div>
   );
 };
