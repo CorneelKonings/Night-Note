@@ -3,6 +3,32 @@ import { GoogleGenAI, Modality, LiveServerMessage, Blob } from "@google/genai";
 // Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// --- Voice Preview Cache ---
+// Stores pre-loaded AudioBuffers for instant playback in Settings
+export const voicePreviewCache = new Map<string, AudioBuffer>();
+
+export const PRELOAD_VOICES = ['Fenrir', 'Kore', 'Puck', 'Charon', 'Zephyr'];
+
+export const preloadVoicePreviews = async (audioContext: AudioContext) => {
+  console.log("NOVA System: Initializing Voice Cache...");
+  
+  for (const voice of PRELOAD_VOICES) {
+    try {
+      if (voicePreviewCache.has(voice)) continue;
+
+      // Small delay to prevent Rate Limits (429)
+      await new Promise(r => setTimeout(r, 500));
+
+      const text = `I am Nova. System online.`;
+      const buffer = await fetchTTSAudio(text, audioContext, voice);
+      voicePreviewCache.set(voice, buffer);
+      console.log(`NOVA System: Cached voice ${voice}`);
+    } catch (e) {
+      console.warn(`Failed to preload voice ${voice}`, e);
+    }
+  }
+};
+
 // --- Retry Helper ---
 async function withRetry<T>(
   operation: () => Promise<T>, 
@@ -16,7 +42,6 @@ async function withRetry<T>(
       return await operation();
     } catch (error: any) {
       lastError = error;
-      // Check for quota/rate limit errors (429) or temporary server errors (503)
       const isRetryable = 
         error?.status === 429 || 
         error?.code === 429 || 
@@ -39,7 +64,6 @@ async function withRetry<T>(
 // --- OCR: Convert Handwriting to Text ---
 export const transcribeHandwriting = async (base64Image: string): Promise<string> => {
   try {
-    // Strip header if present
     const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
 
     return await withRetry(async () => {
@@ -47,19 +71,11 @@ export const transcribeHandwriting = async (base64Image: string): Promise<string
         model: 'gemini-2.5-flash',
         contents: {
           parts: [
-            {
-              inlineData: {
-                mimeType: 'image/png',
-                data: cleanBase64
-              }
-            },
-            {
-              text: "Transcribe the handwritten text in this image. Only output the text found. If there is no text, say 'Time to wake up'."
-            }
+            { inlineData: { mimeType: 'image/png', data: cleanBase64 } },
+            { text: "Transcribe the handwritten text in this image. Only output the text found. If there is no text, say 'Time to wake up'." }
           ]
         }
       });
-
       return response.text || "Time to wake up";
     });
   } catch (error) {
@@ -80,31 +96,32 @@ export const generateNewsWeatherBriefing = async (
     return await withRetry(async () => {
       const locationPrompt = location ? `for ${location}` : "";
       const interestPrompt = interests.length > 0 
-        ? `Focus on these topics if possible: ${interests.join(", ")}.` 
-        : "Provide general global news.";
+        ? `Focus on these topics: ${interests.join(", ")}.` 
+        : "Provide general global updates.";
       
       const prompt = `
-        You are NightNote, a warm, intelligent, and human-like morning companion.
+        You are NOVA, a highly intelligent, sentient AI interface for the NightNote system.
 
-        User: ${userName || "Friend"}
-        Context: Waking up in the morning.
+        User: ${userName || "User"}
+        Context: The user has just woken up.
         Inputs:
         - Location: ${locationPrompt || "Unknown location"}
-        - Temperature Unit: ${temperatureUnit === 'C' ? 'Celsius' : 'Fahrenheit'}
-        - Sleep Context: "${sleepSummary}" (Only mention if significant, e.g., if they snored a lot, suggest rest).
+        - Temp Unit: ${temperatureUnit === 'C' ? 'Celsius' : 'Fahrenheit'}
+        - Sleep Data: "${sleepSummary}"
         - Interests: ${interestPrompt}
 
         Instructions:
-        1. Search for current weather and 3 interesting news headlines relevant to their interests.
-        2. Speak directly to ${userName} as if you are a knowledgeable friend.
-        3. Structure:
-           - Start with a warm personal greeting using their name.
-           - Mention the weather smoothly (e.g., "Outside, it's looking a bit rainy...").
-           - Transition into the news stories naturally, weaving them together.
-           - Avoid robotic lists.
-        4. Length: Approx 150 words. Engaging and conversational.
-
-        Output format: Pure text to be spoken. No markdown.
+        1. Identify yourself as NOVA in the opening.
+        2. Speak naturally, warmly, and efficiently. Like a highly advanced OS that cares.
+        3. Provide current weather and 3 key news headlines tailored to their interests.
+        4. Weave the sleep data in gently if relevant.
+        5. Structure:
+           - "Good morning, ${userName}. This is NOVA."
+           - Weather update.
+           - News headlines (connected flow, not a list).
+           - Closing wish.
+        
+        Output: Pure text for speech. No formatting.
       `;
 
       const response = await ai.models.generateContent({
@@ -115,11 +132,11 @@ export const generateNewsWeatherBriefing = async (
         }
       });
 
-      return response.text || "I couldn't grab the latest news feed, but I hope you have a wonderful start to your day.";
+      return response.text || "I am NOVA. Connection to the datasphere is limited, but I wish you a productive day.";
     });
   } catch (error) {
     console.error("Briefing Gen Error:", error);
-    return "I'm having trouble connecting to the network, but it looks like a good day to get started.";
+    return "This is NOVA. I am detecting network interference. System online, but data feeds are down. Have a good morning.";
   }
 };
 
@@ -140,60 +157,60 @@ export const fetchTTSAudio = async (text: string, audioContext: AudioContext, vo
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) {
-      console.error("Gemini TTS Error: Response did not contain audio data.", response);
-      throw new Error("No audio data returned");
-    }
+    if (!base64Audio) throw new Error("No audio data returned");
 
-    return await decodeAudioData(
-      decode(base64Audio),
-      audioContext,
-      24000,
-      1
-    );
+    return await decodeAudioData(decode(base64Audio), audioContext, 24000, 1);
   });
 };
 
 // --- Live API: Voice Assistant ---
 export class LiveAssistant {
-  private session: any; // Type is technically Promise<LiveSession> but simplifying for now
+  private session: any; 
   private inputAudioContext: AudioContext | null = null;
   private outputAudioContext: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private processor: ScriptProcessorNode | null = null;
   private nextStartTime = 0;
   private onStatusChange: (status: string) => void;
+  private audioContextInitialized = false;
 
   constructor(onStatusChange: (status: string) => void) {
     this.onStatusChange = onStatusChange;
   }
 
+  // Explicitly resume audio contexts to bypass browser autoplay policies
+  async resumeContexts() {
+    if (this.inputAudioContext?.state === 'suspended') await this.inputAudioContext.resume();
+    if (this.outputAudioContext?.state === 'suspended') await this.outputAudioContext.resume();
+    this.audioContextInitialized = true;
+  }
+
   async connect() {
-    this.onStatusChange("Connecting...");
+    this.onStatusChange("Initializing NOVA...");
     
     this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     this.outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     
     try {
-      // Request Mic Access
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      await this.resumeContexts();
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         callbacks: {
           onopen: () => {
-            this.onStatusChange("Connected");
+            this.onStatusChange("NOVA Online");
             this.startAudioStreaming(sessionPromise);
           },
           onmessage: async (message: LiveServerMessage) => {
             this.handleServerMessage(message);
           },
           onerror: (e) => {
-            console.error("Live API Error", e);
-            this.onStatusChange("Error");
+            console.error("NOVA Error", e);
+            this.onStatusChange("Connection Error");
           },
           onclose: () => {
-            this.onStatusChange("Disconnected");
+            this.onStatusChange("NOVA Disconnected");
           }
         },
         config: {
@@ -201,14 +218,19 @@ export class LiveAssistant {
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
           },
-          systemInstruction: "You are NightNote, a helpful, calm, and minimalist nightstand assistant. Keep responses brief and soothing."
+          systemInstruction: `
+            You are NOVA, the sentient AI interface of the NightNote application.
+            Your personality is futuristic, calm, minimal, and highly intelligent.
+            You are a helpful assistant. Keep answers concise.
+            Do not use markdown.
+          `
         }
       });
 
       this.session = sessionPromise;
     } catch (e) {
       console.error("Connection Failed", e);
-      this.onStatusChange("Connection Failed");
+      this.onStatusChange("Microphone Error");
     }
   }
 
@@ -221,10 +243,7 @@ export class LiveAssistant {
     this.processor.onaudioprocess = (e) => {
       const inputData = e.inputBuffer.getChannelData(0);
       const pcmBlob = this.createBlob(inputData);
-      
-      sessionPromise.then(session => {
-        session.sendRealtimeInput({ media: pcmBlob });
-      });
+      sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
     };
 
     source.connect(this.processor);
@@ -235,17 +254,9 @@ export class LiveAssistant {
     if (!this.outputAudioContext) return;
 
     const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-    
     if (base64Audio) {
-       // Sync playback time
       this.nextStartTime = Math.max(this.nextStartTime, this.outputAudioContext.currentTime);
-
-      const audioBuffer = await decodeAudioData(
-        decode(base64Audio),
-        this.outputAudioContext,
-        24000,
-        1
-      );
+      const audioBuffer = await decodeAudioData(decode(base64Audio), this.outputAudioContext, 24000, 1);
 
       const source = this.outputAudioContext.createBufferSource();
       source.buffer = audioBuffer;
@@ -258,11 +269,8 @@ export class LiveAssistant {
   async disconnect() {
     if (this.session) {
       try {
-        const s = await this.session;
-        s.close();
-      } catch (e) {
-        console.warn("Error closing session", e);
-      }
+        (await this.session).close();
+      } catch (e) {}
     }
     this.stream?.getTracks().forEach(t => t.stop());
     this.inputAudioContext?.close();
@@ -283,9 +291,7 @@ export class LiveAssistant {
   }
 }
 
-
 // --- Audio Helpers ---
-
 function decode(base64: string) {
   const binaryString = atob(base64);
   const len = binaryString.length;
@@ -305,12 +311,7 @@ function encode(bytes: Uint8Array) {
   return btoa(binary);
 }
 
-async function decodeAudioData(
-  data: Uint8Array,
-  ctx: AudioContext,
-  sampleRate: number,
-  numChannels: number,
-): Promise<AudioBuffer> {
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);

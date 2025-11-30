@@ -1,3 +1,4 @@
+
 export enum AppMode {
   ONBOARDING = 'ONBOARDING', // New mode
   CLOCK = 'CLOCK',
@@ -28,6 +29,7 @@ export interface Settings {
   location: string;
   voiceName: string;
   temperatureUnit: 'C' | 'F';
+  customAlarmAudio: string | null; // Base64 string of uploaded audio
 }
 
 export interface SleepEvent {

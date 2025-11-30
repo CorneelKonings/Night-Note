@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Settings as SettingsType, ThemeColor } from '../types';
-import { fetchTTSAudio } from '../services/geminiService';
+import { fetchTTSAudio, voicePreviewCache } from '../services/geminiService';
 
 interface SettingsProps {
   settings: SettingsType;
@@ -12,9 +12,7 @@ interface SettingsProps {
   onStartSleep: () => void;
 }
 
-// Comprehensive List: Major World Cities + Dutch Municipalities (Gemeentes)
 const LOCATIONS = [
-  // Dutch Municipalities
   "Amsterdam", "Rotterdam", "Den Haag", "Utrecht", "Eindhoven", "Groningen", "Tilburg", "Almere", "Breda", "Nijmegen",
   "Apeldoorn", "Haarlem", "Arnhem", "Enschede", "Amersfoort", "Zaanstad", "Den Bosch", "Haarlemmermeer", "Zwolle", "Zoetermeer",
   "Leiden", "Leeuwarden", "Dordrecht", "Maastricht", "Ede", "Alphen aan den Rijn", "Westland", "Alkmaar", "Emmen", "Delft",
@@ -23,7 +21,6 @@ const LOCATIONS = [
   "Bergen op Zoom", "Katwijk", "Veenendaal", "Zeist", "Nieuwegein", "Hardenberg", "Roermond", "Doetinchem", "Gooise Meren", "Den Helder",
   "Barneveld", "Hoogeveen", "Oosterhout", "Heerlen", "Vijfheerenlanden", "Kampen", "Pijnacker-Nootdorp", "Woerden", "Heerenveen", "Rijswijk",
   "Weert", "Houten", "Utrechtse Heuvelrug", "Goeree-Overflakkee", "Midden-Groningen", "Baringrecht", "Sittard-Geleen", "Harderwijk", "Zutphen",
-  // Major World Cities
   "New York", "London", "Tokyo", "Paris", "Berlin", "Sydney", "Dubai", "Singapore", "Los Angeles", "Toronto",
   "Hong Kong", "Chicago", "Madrid", "Rome", "Seoul", "Mumbai", "Shanghai", "San Francisco", "Barcelona", "Istanbul",
   "Bangkok", "Moscow", "Beijing", "Jakarta", "Delhi", "Brussels", "Copenhagen", "Stockholm", "Oslo", "Helsinki", "Warsaw", "Prague", "Vienna", "Zurich"
@@ -33,6 +30,15 @@ const INTEREST_OPTIONS = [
   "Technology", "Music", "Politics", "Science", 
   "Finance", "Sports", "Gaming", "Art", "Health", "Space"
 ];
+
+// Mapping for display names
+const VOICE_MAPPING: Record<string, string> = {
+  'Fenrir': 'VOICE 01',
+  'Kore': 'VOICE 02',
+  'Puck': 'VOICE 03',
+  'Charon': 'VOICE 04',
+  'Zephyr': 'VOICE 05'
+};
 
 const Settings: React.FC<SettingsProps> = ({ 
   settings, 
@@ -53,6 +59,7 @@ const Settings: React.FC<SettingsProps> = ({
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLocationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -92,7 +99,6 @@ const Settings: React.FC<SettingsProps> = ({
       },
       (error) => {
         console.error("Error detecting location:", error);
-        // Clean error message if blocked by policy
         const errorMsg = error.message.includes("policy") 
           ? "Permission blocked. Please type location manually." 
           : error.message;
@@ -120,11 +126,21 @@ const Settings: React.FC<SettingsProps> = ({
         await ctx.resume();
       }
       
-      const text = `Voice online.`;
-      const buffer = await fetchTTSAudio(text, ctx, voice);
+      // 1. Try to get from Cache First
+      let buffer = voicePreviewCache.get(voice);
+
+      // 2. If not in cache, fetch it now
+      if (!buffer) {
+         console.log(`Cache miss for ${voice}, fetching live...`);
+         const text = `I am Nova. System online.`;
+         buffer = await fetchTTSAudio(text, ctx, voice);
+         voicePreviewCache.set(voice, buffer); // Save for next time
+      } else {
+         console.log(`Cache hit for ${voice}`);
+      }
       
       const source = ctx.createBufferSource();
-      source.buffer = buffer;
+      source.buffer = buffer!;
       source.connect(ctx.destination);
       source.start();
       
@@ -136,8 +152,30 @@ const Settings: React.FC<SettingsProps> = ({
       console.error("Preview failed", e);
       setPreviewingVoice(null);
       setIsLoadingPreview(false);
-      alert("Audio preview failed. Check console for details (likely Quota or API Key issue).");
+      alert("Audio preview failed. Check console for details.");
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 4 * 1024 * 1024) {
+        alert("File too large. Please use a file smaller than 4MB.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const result = evt.target?.result as string;
+        onUpdateSettings({ customAlarmAudio: result });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const clearCustomAudio = () => {
+    onUpdateSettings({ customAlarmAudio: null });
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const filteredLocations = LOCATIONS.filter(c => c.toLowerCase().includes(locationQuery.toLowerCase()));
@@ -149,7 +187,6 @@ const Settings: React.FC<SettingsProps> = ({
 
         <div className="space-y-6">
 
-          {/* User Profile */}
           <div className="space-y-4 pb-6 border-b border-zinc-800">
             <label className="text-gray-500 text-xs font-digital tracking-widest block">USER PROFILE</label>
             <input 
@@ -176,10 +213,9 @@ const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
           
-          {/* Alarm Section */}
           <div className="space-y-2">
-            <label className="text-gray-500 text-xs font-digital tracking-widest block">ALARM TIME</label>
-            <div className="flex items-center justify-between bg-black/40 p-4 rounded-xl border border-zinc-800">
+            <label className="text-gray-500 text-xs font-digital tracking-widest block">ALARM SETTINGS</label>
+            <div className="flex items-center justify-between bg-black/40 p-4 rounded-xl border border-zinc-800 mb-2">
               <input 
                 type="time" 
                 value={alarmTime}
@@ -193,9 +229,39 @@ const Settings: React.FC<SettingsProps> = ({
                 {isAlarmEnabled ? 'ON' : 'OFF'}
               </button>
             </div>
+            
+            <div className="bg-black/40 p-4 rounded-xl border border-zinc-800 flex flex-col gap-2">
+                <span className="text-xs text-gray-400 font-digital">ALARM SOUND SOURCE</span>
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs rounded-lg text-white font-digital tracking-wider transition-colors"
+                    >
+                        {settings.customAlarmAudio ? 'CHANGE AUDIO FILE' : 'UPLOAD MP3 FILE'}
+                    </button>
+                    {settings.customAlarmAudio && (
+                        <button 
+                             onClick={clearCustomAudio}
+                             className="px-3 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 rounded-lg text-xs"
+                             title="Reset to Default"
+                        >
+                            RESET
+                        </button>
+                    )}
+                </div>
+                <input 
+                    type="file" 
+                    accept="audio/*" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    onChange={handleFileUpload} 
+                />
+                <div className="text-[10px] text-gray-600 truncate">
+                    {settings.customAlarmAudio ? 'Using Custom Uploaded Audio' : 'Using Default System Audio'}
+                </div>
+            </div>
           </div>
 
-          {/* Location for Weather */}
           <div className="space-y-2 relative">
             <label className="text-gray-500 text-xs font-digital tracking-widest block">LOCATION</label>
             <div className="flex gap-2">
@@ -237,7 +303,6 @@ const Settings: React.FC<SettingsProps> = ({
             )}
           </div>
 
-           {/* Temperature Unit */}
           <div className="space-y-2">
             <label className="text-gray-500 text-xs font-digital tracking-widest block">TEMPERATURE UNIT</label>
             <div className="flex bg-black/40 border border-zinc-800 rounded-xl p-1 w-full max-w-[150px]">
@@ -256,9 +321,8 @@ const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
 
-          {/* Voice Selection */}
           <div className="space-y-2">
-            <label className="text-gray-500 text-xs font-digital tracking-widest block">AI VOICE MODEL</label>
+            <label className="text-gray-500 text-xs font-digital tracking-widest block">NOVA VOICE MODEL</label>
             <div className="grid grid-cols-3 gap-2">
               {voices.map(voice => (
                 <button
@@ -271,7 +335,7 @@ const Settings: React.FC<SettingsProps> = ({
                     : 'bg-transparent text-gray-500 border-zinc-800 hover:border-gray-500'
                   }`}
                 >
-                  {voice.toUpperCase()}
+                  {VOICE_MAPPING[voice]}
                   {previewingVoice === voice && (
                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
                         <div className="w-2 h-2 bg-black rounded-full animate-ping"></div>
@@ -282,7 +346,6 @@ const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
 
-          {/* Theme Section */}
           <div className="space-y-2">
             <label className="text-gray-500 text-xs font-digital tracking-widest block">INTERFACE THEME</label>
             <div className="flex gap-4">
@@ -303,7 +366,6 @@ const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
 
-          {/* Features Section */}
           <div className="space-y-2">
             <label className="text-gray-500 text-xs font-digital tracking-widest block">MODULES</label>
             <div className="flex items-center justify-between py-2 border-b border-zinc-800">
@@ -318,7 +380,6 @@ const Settings: React.FC<SettingsProps> = ({
           </div>
         </div>
 
-        {/* Actions */}
         <div className="mt-8 flex flex-col gap-4">
           <button 
             onClick={onStartSleep}

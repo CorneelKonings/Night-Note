@@ -6,7 +6,7 @@ interface VoiceAssistantProps {
 }
 
 const VoiceAssistantUI: React.FC<VoiceAssistantProps> = ({ onClose }) => {
-  const [status, setStatus] = useState("Initializing...");
+  const [status, setStatus] = useState("Initializing NOVA...");
   const assistantRef = useRef<LiveAssistant | null>(null);
   
   // Visualizer bars
@@ -14,6 +14,9 @@ const VoiceAssistantUI: React.FC<VoiceAssistantProps> = ({ onClose }) => {
 
   useEffect(() => {
     assistantRef.current = new LiveAssistant((s) => setStatus(s));
+    
+    // Resume context immediately on mount (user has already clicked a button to get here)
+    // Then connect
     assistantRef.current.connect();
 
     // Fake visualizer animation loop
@@ -42,13 +45,13 @@ const VoiceAssistantUI: React.FC<VoiceAssistantProps> = ({ onClose }) => {
             <div 
               key={i} 
               className="w-4 bg-gradient-to-t from-cyan-900 to-cyan-400 rounded-full transition-all duration-100 ease-in-out shadow-[0_0_15px_rgba(34,211,238,0.5)]"
-              style={{ height: `${status === 'Connected' ? vol : 10}%` }}
+              style={{ height: `${status.includes('Online') ? vol : 10}%` }}
             />
           ))}
         </div>
 
         <p className="text-gray-400 max-w-md text-center font-light leading-relaxed">
-          Ask me to set an alarm or tell you a story.
+          Ask NOVA to set an alarm or tell you a story.
         </p>
 
         <button 

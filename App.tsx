@@ -6,12 +6,17 @@ import Settings from './components/Settings';
 import SleepMonitor from './components/SleepMonitor';
 import Subtitles from './components/Subtitles';
 import Onboarding from './components/Onboarding';
-import { transcribeHandwriting, fetchTTSAudio, generateNewsWeatherBriefing } from './services/geminiService';
+import { transcribeHandwriting, fetchTTSAudio, generateNewsWeatherBriefing, preloadVoicePreviews } from './services/geminiService';
 import { SleepService } from './services/sleepService';
 import { AppMode, Alarm, Settings as SettingsType, SleepEvent } from './types';
 
+// ==================================================================================
+// CONFIGURATION: DEFAULT ALARM SOUND
+// ==================================================================================
+const DEFAULT_ALARM_URL = "https://s17.aconvert.com/convert/p3r68-cdx67/kke26-g7pf4.mp3";
+// ==================================================================================
+
 const App: React.FC = () => {
-  // Load settings from local storage if available
   const loadSavedSettings = (): SettingsType => {
     try {
       const saved = localStorage.getItem('nightnote_settings');
@@ -25,48 +30,53 @@ const App: React.FC = () => {
       alarmVolume: 1.0,
       location: '',
       voiceName: 'Fenrir',
-      temperatureUnit: 'C'
+      temperatureUnit: 'C',
+      customAlarmAudio: null
     };
   };
 
   const [time, setTime] = useState(new Date());
-  // Determine initial mode: if no username, assume first run -> ONBOARDING
   const [mode, setMode] = useState<AppMode>(AppMode.CLOCK); 
   const [isFirstRun, setIsFirstRun] = useState(false);
   
-  // App State
   const [alarm, setAlarm] = useState<Alarm>({ id: '1', time: '08:00', enabled: true, noteImageBase64: undefined, noteText: undefined });
   const [noteImage, setNoteImage] = useState<string | null>(null);
   const [settings, setSettings] = useState<SettingsType>(loadSavedSettings());
   const [sleepEvents, setSleepEvents] = useState<SleepEvent[]>([]);
 
-  // Subtitle & Flow State
   const [subtitleText, setSubtitleText] = useState("");
   const [audioProgress, setAudioProgress] = useState(0);
   const [morningStep, setMorningStep] = useState<'NOTE' | 'PROMPT' | 'BRIEFING'>('NOTE');
 
-  // Refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const sleepServiceRef = useRef<SleepService>(new SleepService());
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
   
-  // Promise Refs for Pre-fetched Content
   const noteAudioPromise = useRef<Promise<{ text: string; audioBuffer: AudioBuffer } | null> | null>(null);
   const briefingAudioPromise = useRef<Promise<{ text: string; audioBuffer: AudioBuffer } | null> | null>(null);
 
+  // Initialize Audio Context and Preload Voices on Mount
   useEffect(() => {
     if (!settings.userName) {
       setMode(AppMode.ONBOARDING);
       setIsFirstRun(true);
     }
+
+    // Initialize Audio Context globally
+    if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+
+    // Start background voice loading
+    if (audioContextRef.current) {
+        preloadVoicePreviews(audioContextRef.current);
+    }
   }, []);
 
-  // Persist Settings
   useEffect(() => {
     localStorage.setItem('nightnote_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Clock Tick
   useEffect(() => {
     const timer = setInterval(() => {
       const now = new Date();
@@ -76,7 +86,6 @@ const App: React.FC = () => {
     return () => clearInterval(timer);
   }, [alarm, mode]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => stopAlarmSound();
   }, []);
@@ -86,37 +95,27 @@ const App: React.FC = () => {
     setMode(AppMode.CLOCK);
   };
 
-  // --- Logic: Alarm & Pre-fetch ---
-
   const checkAlarmAndPrefetch = (now: Date) => {
     if (!alarm.enabled) return;
-    
-    // Check if currently ringing to avoid re-trigger
     if (mode === AppMode.ALARM_RINGING) return;
 
     const currentHours = now.getHours().toString().padStart(2, '0');
     const currentMinutes = now.getMinutes().toString().padStart(2, '0');
     const currentSeconds = now.getSeconds();
 
-    // 1. Check for ALARM Trigger
     if (`${currentHours}:${currentMinutes}` === alarm.time && currentSeconds === 0) {
       triggerAlarm();
       return;
     }
 
-    // 2. Check for PRE-FETCH (2 Minutes Before)
-    // Calculate 2 mins before alarm
     const [alarmH, alarmM] = alarm.time.split(':').map(Number);
     const alarmDate = new Date(now);
     alarmDate.setHours(alarmH, alarmM, 0, 0);
-    
-    // Create prefetch time (Alarm - 2 minutes)
     const prefetchDate = new Date(alarmDate.getTime() - 2 * 60 * 1000);
     const prefetchH = prefetchDate.getHours().toString().padStart(2, '0');
     const prefetchM = prefetchDate.getMinutes().toString().padStart(2, '0');
 
     if (`${currentHours}:${currentMinutes}` === `${prefetchH}:${prefetchM}` && currentSeconds === 0) {
-      // Start both tasks in parallel if not already started
       if (!noteAudioPromise.current) {
         console.log("Starting 2-minute pre-fetch (Note & Briefing)...");
         startPreFetching(true);
@@ -125,12 +124,10 @@ const App: React.FC = () => {
   };
 
   const startPreFetching = (isPrefetch: boolean) => {
-     // Start both generation tasks independently so one doesn't block the other
      noteAudioPromise.current = generateNoteAudio();
      briefingAudioPromise.current = generateBriefingAudio(isPrefetch);
   };
 
-  // Task 1: Generate Note Audio (Fast, Local + TTS)
   const generateNoteAudio = async () => {
     try {
         if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -152,7 +149,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Task 2: Generate News/Weather Briefing (Slow, API Search + TTS)
   const generateBriefingAudio = async (isPrefetch: boolean) => {
     try {
         if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -173,11 +169,10 @@ const App: React.FC = () => {
     }
   };
 
-
   const playAudioFileAlarm = () => {
     if (alarmAudioRef.current) return;
-    const RELIABLE_ALARM_URL = "https://actions.google.com/sounds/v1/alarms/spaceship_alarm.ogg";
-    const audio = new Audio(RELIABLE_ALARM_URL);
+    const audioSource = settings.customAlarmAudio || DEFAULT_ALARM_URL;
+    const audio = new Audio(audioSource);
     audio.loop = true;
     audio.volume = settings.alarmVolume;
     audio.play().catch(e => console.error("Alarm playback failed:", e));
@@ -197,11 +192,8 @@ const App: React.FC = () => {
       const events = sleepServiceRef.current.stopTracking();
       setSleepEvents(events);
     }
-
     setMode(AppMode.ALARM_RINGING);
     playAudioFileAlarm();
-
-    // Fallback: If pre-fetch didn't run, start now
     if (!noteAudioPromise.current) {
         console.log("No pre-fetch found. Starting on-demand generation...");
         startPreFetching(false);
@@ -215,9 +207,8 @@ const App: React.FC = () => {
     setSubtitleText("Reading your note...");
 
     try {
-      // 1. Play Note
       const noteData = await noteAudioPromise.current;
-      noteAudioPromise.current = null; // Clean up
+      noteAudioPromise.current = null;
 
       if (noteData) {
         await playSpeechWithSubtitles(noteData.text, noteData.audioBuffer);
@@ -225,9 +216,8 @@ const App: React.FC = () => {
         await playSpeechWithSubtitles(`Good morning ${settings.userName}. Time to rise.`, undefined);
       }
 
-      // 2. Ask for Briefing
       setMorningStep('PROMPT');
-      setSubtitleText("Do you want a morning brief?");
+      setSubtitleText("Do you want a morning brief from NOVA?");
 
     } catch (e) {
        console.error("Error in morning flow:", e);
@@ -237,13 +227,12 @@ const App: React.FC = () => {
 
   const handleBriefingResponse = async (wantsBriefing: boolean) => {
     if (!wantsBriefing) {
-        // Go back to clock
         setMode(AppMode.CLOCK);
         return;
     }
 
     setMorningStep('BRIEFING');
-    setSubtitleText("Loading Briefing...");
+    setSubtitleText("NOVA is preparing briefing...");
     
     try {
         const briefingData = await briefingAudioPromise.current;
@@ -255,10 +244,7 @@ const App: React.FC = () => {
             setSubtitleText("Briefing unavailable.");
             await new Promise(r => setTimeout(r, 2000));
         }
-        
-        // After briefing, go to clock
         setMode(AppMode.CLOCK);
-
     } catch (e) {
         setSubtitleText("Error loading briefing.");
         await new Promise(r => setTimeout(r, 2000));
@@ -343,8 +329,6 @@ const App: React.FC = () => {
 
   return (
     <div className={`relative w-screen h-screen bg-black overflow-hidden selection:bg-${settings.theme}-500/30`}>
-      
-      {/* Background Ambience */}
       <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-gray-900/40 via-black to-black"></div>
       
       {mode === AppMode.ONBOARDING && (
@@ -418,7 +402,7 @@ const App: React.FC = () => {
            {morningStep === 'PROMPT' ? (
              <div className="flex flex-col items-center gap-12 animate-fadeIn">
                 <h2 className="text-white font-digital text-2xl tracking-[0.2em] text-center max-w-lg">
-                  DO YOU WANT A MORNING BRIEF?
+                  CONNECT TO NOVA BRIEFING?
                 </h2>
                 <div className="flex gap-8">
                   <button 
@@ -437,11 +421,9 @@ const App: React.FC = () => {
              </div>
            ) : (
              <>
-               {/* Subtitles Area - Takes Prominence */}
                <div className="flex-1 flex items-center justify-center w-full max-w-5xl relative">
                   <Subtitles text={subtitleText} progressRatio={audioProgress} theme={settings.theme} />
                </div>
-
                {morningStep === 'NOTE' && noteImage && (
                  <div className="absolute bottom-20 opacity-80">
                     <img src={noteImage} alt="Note" className="h-24 object-contain invert opacity-50" />
