@@ -9,10 +9,11 @@ interface ClockDisplayProps {
   onOpenSettings: () => void;
   hasNote: boolean;
   theme: ThemeColor;
+  isListening: boolean; // NEW PROP
 }
 
 const ClockDisplay: React.FC<ClockDisplayProps> = ({ 
-  time, nextAlarm, onOpenWriting, hasNote, onToggleVoice, onOpenSettings, theme 
+  time, nextAlarm, onOpenWriting, hasNote, onToggleVoice, onOpenSettings, theme, isListening 
 }) => {
   const hours = time.getHours().toString().padStart(2, '0');
   const minutes = time.getMinutes().toString().padStart(2, '0');
@@ -82,6 +83,14 @@ const ClockDisplay: React.FC<ClockDisplayProps> = ({
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
           <span className="font-digital text-xs tracking-widest">MEMO STORED</span>
         </div>
+      )}
+
+      {/* Wake Word Indicator */}
+      {isListening && (
+         <div className="absolute top-24 sm:top-32 flex items-center gap-2 animate-pulse">
+            <div className={`w-2 h-2 rounded-full ${textColors[theme]} bg-current shadow-[0_0_10px_currentColor]`}></div>
+            <span className={`font-digital text-[10px] tracking-[0.3em] uppercase ${textColors[theme]} opacity-70`}>Listening</span>
+         </div>
       )}
 
       {/* Voice Control */}

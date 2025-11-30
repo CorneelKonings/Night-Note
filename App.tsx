@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ClockDisplay from './components/ClockDisplay';
 import DrawingPad from './components/DrawingPad';
 import VoiceAssistantUI from './components/VoiceAssistant.tsx';
@@ -83,9 +83,23 @@ const App: React.FC = () => {
   }, [settings]);
 
   // --- WAKE WORD DETECTION (HOOK) ---
-  useWakeWord(() => {
-    setMode(AppMode.VOICE_ASSISTANT);
-  }, mode === AppMode.CLOCK);
+  // Memoize the callback with NO dependencies so it never changes identity
+  const handleWakeWord = useCallback(() => {
+    setMode(prevMode => {
+        // Only trigger if we are in Clock mode
+        if (prevMode === AppMode.CLOCK) {
+            return AppMode.VOICE_ASSISTANT;
+        }
+        return prevMode;
+    });
+  }, []); 
+
+  const { isListening: isWakeWordListening } = useWakeWord(
+    handleWakeWord, 
+    // Enable only when in CLOCK mode. Even if this boolean changes, 
+    // the hook handles it gracefully now.
+    mode === AppMode.CLOCK
+  );
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -354,6 +368,7 @@ const App: React.FC = () => {
           onOpenSettings={() => setMode(AppMode.SETTINGS)}
           hasNote={!!noteImage}
           theme={settings.theme}
+          isListening={isWakeWordListening}
         />
       )}
 

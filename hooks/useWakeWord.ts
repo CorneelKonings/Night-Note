@@ -3,100 +3,107 @@ import { useEffect, useRef, useState } from 'react';
 export const useWakeWord = (onWake: () => void, isEnabled: boolean) => {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  
+  // Use a ref for the callback so we don't restart the effect when the callback function identity changes
+  // This is crucial because App.tsx re-renders every second for the clock
+  const onWakeRef = useRef(onWake);
+  
+  // Keep the ref updated with the latest callback
+  useEffect(() => {
+    onWakeRef.current = onWake;
+  }, [onWake]);
 
   useEffect(() => {
-    // 1. Check Browser Support
+    // 1. Browser Support Check
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+    if (!SpeechRecognition) return;
+
+    // 2. Cleanup previous instance if it exists
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch(e) {}
+      recognitionRef.current = null;
+    }
+
+    if (!isEnabled) {
+      setIsListening(false);
       return;
     }
 
-    let isMounted = true;
-    let restartTimer: any = null;
+    // 3. Initialize New Instance
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true; // Keep listening as long as possible
+    recognition.interimResults = true; // Get results faster
+    recognition.lang = 'en-US';
 
-    if (isEnabled) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true; // Keep listening
-      recognition.interimResults = true; // fast results
-      recognition.lang = 'en-US';
+    recognition.onstart = () => {
+      console.log("NOVA Ears: Online");
+      setIsListening(true);
+    };
 
-      recognition.onstart = () => {
-        if (isMounted) setIsListening(true);
-      };
-
-      recognition.onresult = (event: any) => {
-        if (!isMounted) return;
-
-        // 2. Concatenate all current speech into one string
-        let fullTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          fullTranscript += event.results[i][0].transcript;
-        }
-        
-        const cleanTranscript = fullTranscript.trim().toLowerCase();
-
-        // 3. Check for Triggers
-        const triggers = [
-          'hey nova', 'hi nova', 'hello nova', 'okay nova', 'ok nova',
-          'hey noah', 'hi noah', 'hello noah', // Common misinterpretation
-          'hey nola', 'hi nola',               // Common misinterpretation
-          'start nova', 'activate nova', 'wake up nova'
-        ];
-
-        const detected = triggers.some(t => cleanTranscript.includes(t));
-        
-        if (detected) {
-          console.log(`NOVA Activated`); // Only log on success
-          recognition.stop(); // Stop listening
-          onWake(); // Trigger Action
-        }
-      };
-
-      recognition.onend = () => {
-        if (!isMounted) return;
-        
-        // 4. Safe Restart (prevents browser crash loops)
-        if (isEnabled) {
-           restartTimer = setTimeout(() => {
-             if (isMounted && recognitionRef.current) {
-               try {
-                 recognition.start();
-               } catch (e) {
-                 // Ignore start errors
-               }
-             }
-           }, 500); // 500ms delay is safe
-        } else {
-           setIsListening(false);
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        // Silently ignore common errors
-      };
-
-      recognitionRef.current = recognition;
-
-      // Start immediately
-      try {
-        recognition.start();
-      } catch (e) {
-        // ignore
+    recognition.onresult = (event: any) => {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        transcript += event.results[i][0].transcript;
       }
+      
+      const cleanInput = transcript.toLowerCase();
+      
+      // Check for keywords
+      // We check for various spellings/misinterpretations of 'Nova'
+      const triggers = ['nova', 'hey nova', 'hi nova', 'hello nova', 'okay nova', 'noah', 'nola', 'know a'];
+      const detected = triggers.some(t => cleanInput.includes(t));
 
-      return () => {
-        isMounted = false;
-        if (restartTimer) clearTimeout(restartTimer);
-        if (recognitionRef.current) {
-          recognitionRef.current.stop();
-          recognitionRef.current = null;
-        }
-        setIsListening(false);
-      };
-    } else {
+      if (detected) {
+        console.log("Wake Word Detected:", cleanInput);
+        recognition.abort(); // Stop listening to trigger wake
+        onWakeRef.current(); // Call the latest callback
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      // Ignore harmless errors that happen normally
+      if (event.error === 'no-speech') return;
+      if (event.error === 'aborted') return;
+      if (event.error === 'not-allowed') {
+          console.error("Microphone permission denied");
+          setIsListening(false);
+      }
+    };
+
+    recognition.onend = () => {
       setIsListening(false);
+      // AGGRESSIVE RESTART: If enabled, start immediately to stay "Constant"
+      // We check isEnabled inside the timeout to ensure we don't restart if user disabled it
+      if (isEnabled) {
+        setTimeout(() => {
+            if (isEnabled && recognitionRef.current === recognition) {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    // Ignore already-started errors
+                }
+            }
+        }, 100); // 100ms delay is fast enough to feel instant but prevents CPU freeze
+      }
+    };
+
+    recognitionRef.current = recognition;
+
+    // 4. Start Listening
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error("Failed to start speech recognition:", e);
     }
-  }, [isEnabled, onWake]);
+
+    // Cleanup on Unmount or when isEnabled changes
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch(e) {}
+        recognitionRef.current = null;
+      }
+    };
+  }, [isEnabled]); // ONLY depends on isEnabled. Re-renders of App won't touch this.
 
   return { isListening };
 };
