@@ -29,7 +29,7 @@ const App: React.FC = () => {
       isSleepTrackingEnabled: false,
       alarmVolume: 1.0,
       location: '',
-      voiceName: 'Fenrir',
+      voiceName: 'Zephyr', // Default to Zephyr
       temperatureUnit: 'C',
       customAlarmAudio: null
     };

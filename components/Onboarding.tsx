@@ -9,41 +9,227 @@ const INTEREST_OPTIONS = [
   "Finance", "Sports", "Gaming", "Art", "Health", "Space"
 ];
 
+const TOUR_STEPS = [
+  {
+    title: "NOTE TO SELF",
+    desc: "Your screen is a canvas. Write thoughts, reminders, or dreams before you sleep. NOVA keeps them safe.",
+    icon: (
+      <svg className="w-24 h-24 text-cyan-400 drop-shadow-[0_0_25px_rgba(34,211,238,0.6)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={0.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+    )
+  },
+  {
+    title: "INTELLIGENT WAKE",
+    desc: "Wake up to your handwritten note read back to you, followed by a briefing on weather & news tailored to your life.",
+    icon: (
+      <svg className="w-24 h-24 text-amber-400 drop-shadow-[0_0_25px_rgba(251,191,36,0.6)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={0.5} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+    )
+  },
+  {
+    title: "SLEEP ANALYTICS",
+    desc: "Privacy-first sleep tracking monitors noise levels and snoring to give you insights into your rest quality.",
+    icon: (
+      <svg className="w-24 h-24 text-emerald-400 drop-shadow-[0_0_25px_rgba(52,211,153,0.6)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={0.5} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+    )
+  },
+  {
+    title: "LIVE ASSISTANT",
+    desc: "Connect with NOVA via real-time voice. Ask questions, set alarms, or just chat about the universe.",
+    icon: (
+      <svg className="w-24 h-24 text-rose-400 drop-shadow-[0_0_25px_rgba(251,113,133,0.6)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={0.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+    )
+  }
+];
+
 const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
-  const [step, setStep] = useState(0); // 0 = Intro, 1 = Feature 1, 2 = Feature 2, 3 = Profile
+  // Mode: 'INTRO' (The Movie) -> 'TOUR' (The Explanation) -> 'PROFILE' (The Setup)
+  const [mode, setMode] = useState<'INTRO' | 'TOUR' | 'PROFILE'>('INTRO');
+  
+  // INTRO PHASES:
+  // 0: Black/Wait
+  // 1: "INTRODUCING"
+  // 2: TIMEWARP ACCELERATION (Stars stretch)
+  // 3: FULL HYPERDRIVE (Tunnel effect)
+  // 4: FLASH (Whiteout)
+  // 5: LOGO REVEAL (Slam)
+  // 6: NOVA REVEAL (Powered by)
+  // 7: READY (Show Button)
+  const [introPhase, setIntroPhase] = useState(0);
+
+  // TOUR STEPS
+  const [tourStep, setTourStep] = useState(0);
+  const [isSlideAnim, setIsSlideAnim] = useState(false); // For transition effect
+
+  // PROFILE STATE
   const [name, setName] = useState("");
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [isExiting, setIsExiting] = useState(false);
-  
-  // Intro Phases:
-  // 0: Boot sequence (Text typing)
-  // 1: Drift (Slow stars)
-  // 2: Warp Engage (Stars stretch)
-  // 3: Flash (White out)
-  // 4: Logo Reveal (Slam)
-  // 5: HUD Online (Button appears)
-  const [introPhase, setIntroPhase] = useState(0);
 
-  // Skip logic
-  const skipIntro = () => {
-    if (step === 0) setIntroPhase(5);
+  // MOUSE TILT STATE
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // --- MOUSE PARALLAX HANDLER ---
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (mode !== 'TOUR') return;
+    const { clientX, clientY, currentTarget } = e;
+    const { width, height } = currentTarget.getBoundingClientRect();
+    const x = (clientX / width - 0.5) * 20; // -10 to 10 deg
+    const y = (clientY / height - 0.5) * -20; // Invert Y
+    setTilt({ x, y });
   };
 
-  // Cinematic Timeline
+  // --- CINEMATIC TIMELINE ---
   useEffect(() => {
-    if (step === 0) {
+    if (mode === 'INTRO') {
       const timers: ReturnType<typeof setTimeout>[] = [];
       
-      // 0s: Start Boot
-      timers.push(setTimeout(() => setIntroPhase(1), 1500));  // Start drifting
-      timers.push(setTimeout(() => setIntroPhase(2), 5000));  // ENGAGE WARP (after 5s)
-      timers.push(setTimeout(() => setIntroPhase(3), 8500));  // FLASH (Peak warp)
-      timers.push(setTimeout(() => setIntroPhase(4), 8800));  // LOGO SLAM
-      timers.push(setTimeout(() => setIntroPhase(5), 11000)); // UI Ready
+      timers.push(setTimeout(() => setIntroPhase(1), 1000)); // "INTRODUCING"
+      timers.push(setTimeout(() => setIntroPhase(2), 4000)); // PRE-WARP
+      timers.push(setTimeout(() => setIntroPhase(3), 5000)); // HYPERDRIVE
+      timers.push(setTimeout(() => setIntroPhase(4), 8000)); // FLASH
+      timers.push(setTimeout(() => setIntroPhase(5), 8300)); // LOGO SLAM
+      timers.push(setTimeout(() => setIntroPhase(6), 9500)); // POWERED BY NOVA
+      timers.push(setTimeout(() => setIntroPhase(7), 11000)); // BUTTON
 
       return () => timers.forEach(t => clearTimeout(t));
     }
-  }, [step]);
+  }, [mode]);
+
+  // --- CANVAS PARTICLE SYSTEM ---
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) return;
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
+    class Star {
+      x: number;
+      y: number;
+      z: number;
+      color: string;
+
+      constructor() {
+        this.x = (Math.random() - 0.5) * canvas!.width * 2;
+        this.y = (Math.random() - 0.5) * canvas!.height * 2;
+        this.z = Math.random() * 2000;
+        this.color = Math.random() > 0.7 ? '#ffffff' : '#22d3ee'; // White or Cyan
+      }
+
+      update(speed: number) {
+        this.z -= speed;
+        if (this.z < 1) {
+          this.z = 2000;
+          this.x = (Math.random() - 0.5) * canvas!.width * 2;
+          this.y = (Math.random() - 0.5) * canvas!.height * 2;
+        }
+      }
+
+      draw(c: CanvasRenderingContext2D, centerX: number, centerY: number, speed: number) {
+        const x2d = centerX + this.x * (800 / this.z);
+        const y2d = centerY + this.y * (800 / this.z);
+
+        if (x2d < 0 || x2d > canvas!.width || y2d < 0 || y2d > canvas!.height) return;
+
+        const size = Math.max(0.5, (1 - this.z / 2000) * 3);
+        const opacity = Math.min(1, (1 - this.z / 2000) + 0.2);
+
+        c.fillStyle = this.color;
+        c.strokeStyle = this.color;
+        c.globalAlpha = opacity;
+
+        if (speed > 20) {
+           const length = Math.max(2, (2000 - this.z) * (speed * 0.002));
+           c.beginPath();
+           c.moveTo(x2d, y2d);
+           const angle = Math.atan2(y2d - centerY, x2d - centerX);
+           c.lineTo(x2d - Math.cos(angle) * length, y2d - Math.sin(angle) * length);
+           c.lineWidth = size;
+           c.stroke();
+        } else {
+           c.beginPath();
+           c.arc(x2d, y2d, size, 0, Math.PI * 2);
+           c.fill();
+        }
+      }
+    }
+
+    const starCount = 800;
+    const stars: Star[] = Array.from({ length: starCount }, () => new Star());
+    
+    let animationId: number;
+    let currentSpeed = 0.5;
+
+    const render = () => {
+      // CLEAR BACKGROUND (with trail effect if moving fast)
+      ctx.fillStyle = introPhase === 3 ? 'rgba(0,0,0,0.3)' : '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+
+      // SPEED LOGIC
+      let targetSpeed = 0.5;
+      if (mode === 'INTRO') {
+        if (introPhase === 2) targetSpeed = 20; 
+        if (introPhase === 3) targetSpeed = 80; 
+        if (introPhase >= 4) targetSpeed = 0;   // Temp Stop
+      } else {
+        // TOUR / PROFILE MODE: Cruise Speed
+        targetSpeed = 1.5; 
+      }
+
+      currentSpeed += (targetSpeed - currentSpeed) * 0.05;
+
+      stars.forEach(star => {
+        star.update(currentSpeed);
+        star.draw(ctx, centerX, centerY, currentSpeed);
+      });
+
+      // Keep rendering as long as we are NOT in the final exit fade
+      if (!isExiting) {
+        animationId = requestAnimationFrame(render);
+      }
+    };
+
+    render();
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(animationId);
+    };
+  }, [introPhase, mode, isExiting]);
+
+  const startTour = () => {
+    setMode('TOUR');
+  };
+
+  const nextTourStep = () => {
+    setIsSlideAnim(true);
+    setTimeout(() => {
+      if (tourStep < TOUR_STEPS.length - 1) {
+        setTourStep(prev => prev + 1);
+        setIsSlideAnim(false);
+      } else {
+        setMode('PROFILE');
+      }
+    }, 300);
+  };
+
+  const finishOnboarding = () => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onComplete(name || "Traveler", selectedInterests);
+    }, 1000);
+  };
 
   const toggleInterest = (interest: string) => {
     setSelectedInterests(prev => 
@@ -53,281 +239,164 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     );
   };
 
-  const handleNext = () => {
-    if (step < 3) {
-      setStep(prev => prev + 1);
-    } else {
-      setIsExiting(true);
-      setTimeout(() => {
-        onComplete(name || "Traveler", selectedInterests);
-      }, 800);
-    }
-  };
-
-  // --- Star Generation ---
-  // We generate three layers of stars for parallax effect
-  const renderStars = (count: number, speed: 'slow' | 'fast' | 'warp') => {
-    return new Array(count).fill(0).map((_, i) => {
-      const left = Math.random() * 100;
-      const top = Math.random() * 100;
-      const size = Math.random() * 2 + 1;
-      const delay = Math.random() * 5;
+  return (
+    <div 
+      className={`fixed inset-0 z-[100] bg-black text-white flex flex-col items-center justify-center overflow-hidden transition-opacity duration-1000 ${isExiting ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+      onMouseMove={handleMouseMove}
+    >
       
-      let animationClass = '';
-      if (speed === 'slow') animationClass = 'animate-drift';
-      if (speed === 'fast') animationClass = 'animate-fly';
-      if (speed === 'warp') animationClass = 'animate-warp-stretch';
+      {/* BACKGROUND CANVAS (Visible throughout, except during flash) */}
+      <canvas 
+        ref={canvasRef}
+        className={`absolute inset-0 z-0 transition-opacity duration-1000 ${introPhase === 4 ? 'opacity-0' : 'opacity-100'}`}
+      />
 
-      return (
-        <div 
-          key={i}
-          className={`absolute bg-white rounded-full ${animationClass}`}
-          style={{
-            left: `${left}%`,
-            top: `${top}%`,
-            width: speed === 'warp' ? `${size}px` : `${size}px`,
-            height: speed === 'warp' ? `${size * 40}px` : `${size}px`,
-            opacity: Math.random(),
-            animationDuration: speed === 'warp' ? '0.2s' : `${3 + Math.random() * 5}s`,
-            animationDelay: `-${delay}s`,
-            transform: 'translateZ(0)',
-          }}
-        />
-      );
-    });
-  };
+      {/* FLASH OVERLAY */}
+      <div className={`fixed inset-0 bg-white z-50 pointer-events-none transition-opacity duration-300 ease-out ${introPhase === 4 ? 'opacity-100' : 'opacity-0'}`}></div>
 
-  const renderContent = () => {
-    switch (step) {
-      case 0: // THE CINEMATIC INTRO
-        return (
-          <div className="relative w-full h-full flex items-center justify-center perspective-1000">
-             
-             {/* Phase 0: Boot Text */}
-             {introPhase === 0 && (
-               <div className="font-digital text-cyan-500 text-xs tracking-widest animate-pulse">
-                 SYSTEM_BOOT_SEQUENCE_INIT...
-               </div>
-             )}
+      {/* ====================================================================
+          INTRO SCENE
+      ==================================================================== */}
+      
+      {mode === 'INTRO' && (
+        <>
+          <div className={`absolute z-20 transition-all duration-1000 ${introPhase === 1 ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
+            <h1 className="font-digital text-gray-400 text-xs md:text-sm tracking-[0.8em] uppercase">Introducing</h1>
+          </div>
 
-             {/* Phase 1: Drifting Text */}
-             <div className={`absolute transition-all duration-1000 ${introPhase === 1 ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                <h1 className="text-4xl md:text-6xl font-thin tracking-[0.5em] text-white font-digital text-center">
-                  INTRODUCING
-                </h1>
-             </div>
-
-             {/* Phase 3: The Flash */}
-             <div className={`fixed inset-0 bg-white z-50 pointer-events-none transition-opacity duration-300 ease-out ${introPhase === 3 ? 'opacity-100' : 'opacity-0'}`}></div>
-
-             {/* Phase 4: Logo Reveal */}
-             <div className={`flex flex-col items-center z-40 transition-all duration-500 transform ${introPhase >= 4 ? 'opacity-100 scale-100' : 'opacity-0 scale-[5]'}`}>
-                
-                {/* LOGO CONTAINER */}
-                <div className="flex items-end gap-1 md:gap-3 relative">
-                   {/* N */}
-                   <span className="text-6xl md:text-9xl font-digital font-black text-white tracking-tighter drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">N</span>
-                   
-                   {/* THE 'I' with STAR */}
-                   <div className="flex flex-col items-center justify-end h-[60px] md:h-[90px] w-8 md:w-12 relative pb-1 md:pb-2">
-                      {/* The Star (Ball of the I) */}
-                      <div className="absolute top-[-20px] md:top-[-30px] animate-spin-slow z-10">
-                         <svg className="w-10 h-10 md:w-16 md:h-16 text-cyan-400 drop-shadow-[0_0_25px_cyan]" viewBox="0 0 24 24" fill="currentColor">
-                           <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-                         </svg>
-                      </div>
-                      {/* The Stem */}
-                      <div className="w-3 md:w-5 h-full bg-gradient-to-t from-white via-cyan-100 to-transparent rounded-sm shadow-[0_0_15px_white]"></div>
-                   </div>
-
-                   {/* GHTNOTE */}
-                   <span className="text-6xl md:text-9xl font-digital font-black text-white tracking-tighter drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">GHTNOTE</span>
+          {introPhase >= 5 && (
+            <div className="z-40 flex flex-col items-center">
+                {/* LOGO */}
+                <div className={`flex items-end gap-1 md:gap-3 relative transition-all duration-300 ${introPhase === 5 ? 'scale-100 opacity-100 translate-y-0' : 'scale-100'}`}>
+                    <span className="text-6xl md:text-9xl font-digital font-black text-white tracking-tighter drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]">N</span>
+                    <div className="flex flex-col items-center justify-end h-[60px] md:h-[90px] w-8 md:w-12 relative pb-1 md:pb-2">
+                        <div className="absolute top-[-25px] md:top-[-35px] animate-spin-slow z-10">
+                            <svg className="w-12 h-12 md:w-20 md:h-20 text-cyan-400 drop-shadow-[0_0_35px_cyan]" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                            </svg>
+                        </div>
+                        <div className="w-4 md:w-6 h-full bg-gradient-to-t from-white via-cyan-100 to-transparent rounded-sm shadow-[0_0_20px_white]"></div>
+                    </div>
+                    <span className="text-6xl md:text-9xl font-digital font-black text-white tracking-tighter drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]">GHTNOTE</span>
                 </div>
 
-                {/* Powered By */}
-                <div className={`mt-8 transition-all duration-1000 delay-500 ${introPhase >= 4 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
-                  <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-6 py-2 rounded-full backdrop-blur-md shadow-[0_0_20px_rgba(34,211,238,0.2)]">
+                {/* POWERED BY */}
+                <div className={`mt-8 transition-all duration-1000 ${introPhase >= 6 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+                    <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-6 py-2 rounded-full backdrop-blur-md shadow-[0_0_20px_rgba(34,211,238,0.2)]">
                     <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_10px_cyan]"></div>
                     <span className="text-gray-300 font-digital text-xs md:text-sm tracking-widest">
-                      POWERED BY <span className="text-white font-bold text-shadow-cyan">NOVA AI</span>
+                        POWERED BY <span className="text-white font-bold text-shadow-cyan">NOVA AI</span>
                     </span>
-                  </div>
+                    </div>
                 </div>
 
-             </div>
-          </div>
-        );
-
-      case 1: // WRITE
-        return (
-          <div className="flex flex-col items-center text-center animate-fadeIn space-y-10 z-20">
-            <div className="relative group perspective-500">
-               <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full group-hover:bg-emerald-500/30 transition-all duration-500"></div>
-               <div className="transform rotate-y-12 transition-transform duration-1000 group-hover:rotate-y-0">
-                  <svg className="w-40 h-40 text-emerald-400 relative z-10 drop-shadow-[0_0_25px_rgba(52,211,153,0.6)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={0.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-               </div>
-            </div>
-            <div>
-              <h2 className="text-5xl font-digital text-white tracking-widest drop-shadow-lg mb-4">
-                NOTE TO SELF
-              </h2>
-              <p className="text-gray-400 text-lg max-w-lg font-light leading-relaxed mx-auto">
-                Handwrite a thought on the screen before you sleep. <br/>
-                <span className="text-emerald-400 font-bold">NOVA</span> reads it back when you wake.
-              </p>
-            </div>
-          </div>
-        );
-
-      case 2: // BRIEFING
-        return (
-          <div className="flex flex-col items-center text-center animate-fadeIn space-y-10 z-20">
-             <div className="relative group perspective-500">
-               <div className="absolute inset-0 bg-amber-500/20 blur-3xl rounded-full group-hover:bg-amber-500/30 transition-all duration-500"></div>
-               <div className="transform rotate-y-12 transition-transform duration-1000 group-hover:rotate-y-0">
-                  <svg className="w-40 h-40 text-amber-400 relative z-10 drop-shadow-[0_0_25px_rgba(251,191,36,0.6)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={0.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-               </div>
-             </div>
-            <div>
-              <h2 className="text-5xl font-digital text-white tracking-widest drop-shadow-lg mb-4">
-                NOVA BRIEFING
-              </h2>
-              <p className="text-gray-400 text-lg max-w-lg font-light leading-relaxed mx-auto">
-                Start your day with intelligence. <br/>
-                Weather, news, and sleep insights tailored by <span className="text-amber-400 font-bold">NOVA</span>.
-              </p>
-            </div>
-          </div>
-        );
-
-      case 3: // PROFILE
-        return (
-          <div className="flex flex-col items-center text-center animate-fadeIn w-full max-w-md z-20">
-            <h2 className="text-3xl font-digital text-white tracking-widest mb-2">IDENTIFY YOURSELF</h2>
-            <p className="text-gray-500 text-sm mb-8">Configure NOVA Personalization Protocol.</p>
-            
-            <div className="w-full space-y-8 bg-zinc-900/50 p-8 rounded-3xl border border-zinc-800 backdrop-blur-xl">
-              <div className="flex flex-col items-start gap-2 text-left">
-                <label className="text-xs font-digital text-cyan-400 tracking-widest">DESIGNATION (NAME)</label>
-                <input 
-                  type="text" 
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter Name..."
-                  className="w-full bg-black/40 border border-zinc-700 rounded-xl p-4 text-white text-lg focus:border-cyan-400 focus:outline-none focus:shadow-[0_0_15px_rgba(34,211,238,0.2)] transition-all placeholder-gray-700"
-                />
-              </div>
-
-              <div className="flex flex-col items-start gap-2 text-left">
-                <label className="text-xs font-digital text-cyan-400 tracking-widest">INTEREST PROTOCOLS</label>
-                <div className="flex flex-wrap gap-2">
-                  {INTEREST_OPTIONS.map(interest => (
-                    <button
-                      key={interest}
-                      onClick={() => toggleInterest(interest)}
-                      className={`px-3 py-2 rounded-lg text-xs font-digital tracking-wider border transition-all ${
-                        selectedInterests.includes(interest)
-                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.3)]'
-                          : 'bg-zinc-800/50 border-zinc-700 text-gray-500 hover:border-gray-500 hover:text-white'
-                      }`}
-                    >
-                      {interest}
-                    </button>
-                  ))}
+                {/* BUTTON */}
+                <div className={`mt-16 transition-all duration-1000 ${introPhase >= 7 ? 'opacity-100' : 'opacity-0'}`}>
+                     <button onClick={startTour} className="px-8 py-4 bg-white text-black font-digital text-lg tracking-[0.2em] rounded-full hover:bg-cyan-400 hover:scale-105 transition-all shadow-[0_0_30px_rgba(255,255,255,0.4)]">BEGIN TOUR</button>
                 </div>
-              </div>
             </div>
-          </div>
-        );
-    }
-  };
-
-  return (
-    <div className={`fixed inset-0 z-[60] bg-black flex flex-col items-center justify-center overflow-hidden transition-all duration-1000 ${isExiting ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100'}`}>
-      
-      {/* 3D SPACE BACKGROUND CONTAINER */}
-      <div className="absolute inset-0 bg-black perspective-1000 overflow-hidden">
-         {/* Deep Space Gradient */}
-         <div className={`absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(20,20,35,1)_0%,_rgba(0,0,0,1)_100%)] transition-opacity duration-2000 ${introPhase >= 3 ? 'opacity-100' : 'opacity-80'}`}></div>
-         
-         {/* STAR LAYERS - Visibility controlled by phase */}
-         {/* Phase 0 & 1: Drifting Stars */}
-         <div className={`absolute inset-0 transition-opacity duration-1000 ${introPhase < 2 ? 'opacity-100' : 'opacity-0'}`}>
-            {renderStars(100, 'slow')}
-         </div>
-
-         {/* Phase 2: Warp Stars */}
-         <div className={`absolute inset-0 origin-center transition-all duration-500 ${introPhase === 2 ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-            {renderStars(50, 'warp')}
-         </div>
-
-         {/* Post-Intro: Ambient Dust */}
-         <div className={`absolute inset-0 transition-opacity duration-2000 ${introPhase >= 4 ? 'opacity-40' : 'opacity-0'}`}>
-            {renderStars(30, 'slow')}
-         </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="relative z-20 w-full max-w-4xl min-h-[500px] flex flex-col items-center justify-center p-6">
-        {renderContent()}
-      </div>
-
-      {/* Navigation (Only appears after logo reveal) */}
-      <div className={`absolute bottom-12 z-20 w-full max-w-xs flex flex-col items-center gap-6 transition-all duration-1000 delay-500 ${introPhase >= 5 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
-        {/* Progress Dots */}
-        <div className="flex gap-3">
-          {[0, 1, 2, 3].map(i => (
-            <div 
-              key={i} 
-              className={`h-1 rounded-full transition-all duration-500 ${step === i ? 'w-10 bg-cyan-400 shadow-[0_0_10px_cyan]' : 'w-2 bg-gray-800'}`}
-            />
-          ))}
-        </div>
-
-        <button 
-          onClick={handleNext}
-          className="w-full py-5 bg-white text-black font-digital font-bold text-lg tracking-[0.2em] rounded-full hover:bg-cyan-400 hover:text-black hover:scale-105 transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]"
-        >
-          {step === 3 ? "INITIALIZE SYSTEM" : (step === 0 ? "BEGIN TOUR" : "NEXT")}
-        </button>
-      </div>
-
-      {/* Skip Button (During Intro) */}
-      {introPhase < 4 && (
-        <button 
-          onClick={skipIntro}
-          className="absolute bottom-8 right-8 z-50 text-gray-600 font-digital text-xs tracking-widest hover:text-white transition-colors"
-        >
-          SKIP SEQUENCE
-        </button>
+          )}
+        </>
       )}
 
-      {/* Custom Keyframes for Animations */}
+      {/* ====================================================================
+          TOUR MODE
+      ==================================================================== */}
+
+      {mode === 'TOUR' && (
+        <div className="z-50 w-full max-w-6xl flex flex-col items-center justify-center p-6 perspective-1000">
+           
+           {/* 3D TILT CARD */}
+           <div 
+             className={`bg-zinc-900/40 border border-white/10 p-12 rounded-3xl backdrop-blur-md shadow-2xl flex flex-col items-center text-center max-w-2xl transform transition-all duration-300 ${isSlideAnim ? 'opacity-0 translate-x-[-50px] scale-90' : 'opacity-100 translate-x-0 scale-100'}`}
+             style={{
+               transform: `rotateY(${tilt.x}deg) rotateX(${tilt.y}deg)`,
+               boxShadow: `0 20px 50px rgba(0,0,0,0.5), ${-tilt.x}px ${tilt.y}px 20px rgba(34,211,238,0.1)`
+             }}
+           >
+              {/* ICON */}
+              <div className="mb-8 transform transition-transform duration-500 hover:scale-110 hover:rotate-6">
+                {TOUR_STEPS[tourStep].icon}
+              </div>
+
+              {/* TEXT */}
+              <h2 className="text-4xl md:text-5xl font-digital text-white tracking-widest mb-6 drop-shadow-md">
+                {TOUR_STEPS[tourStep].title}
+              </h2>
+              <p className="text-gray-300 text-lg md:text-xl font-light leading-relaxed max-w-lg mx-auto">
+                {TOUR_STEPS[tourStep].desc}
+              </p>
+
+              {/* PROGRESS */}
+              <div className="flex items-center gap-3 mt-12 mb-8">
+                 {TOUR_STEPS.map((_, i) => (
+                   <div key={i} className={`h-1 transition-all duration-300 ${i === tourStep ? 'w-12 bg-cyan-400 shadow-[0_0_10px_cyan]' : 'w-4 bg-gray-700'}`}></div>
+                 ))}
+              </div>
+
+              {/* ACTION */}
+              <button 
+                onClick={nextTourStep}
+                className="group relative px-10 py-3 overflow-hidden rounded-full bg-white text-black font-digital tracking-widest text-lg transition-all hover:scale-105"
+              >
+                <span className="relative z-10">{tourStep === TOUR_STEPS.length - 1 ? "INITIALIZE" : "CONTINUE"}</span>
+                <div className="absolute inset-0 bg-cyan-400 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
+              </button>
+           </div>
+        </div>
+      )}
+
+      {/* ====================================================================
+          PROFILE MODE
+      ==================================================================== */}
+
+      {mode === 'PROFILE' && (
+        <div className="z-50 w-full max-w-md bg-zinc-900/80 p-8 rounded-3xl border border-zinc-700 backdrop-blur-xl animate-fadeInUp shadow-2xl">
+           <h2 className="text-2xl font-digital text-white tracking-widest mb-6 text-center">INITIALIZE PROFILE</h2>
+           <div className="space-y-6">
+              <div className="space-y-2">
+                 <label className="text-xs font-digital text-cyan-400 tracking-widest">DESIGNATION</label>
+                 <input 
+                   type="text" 
+                   value={name}
+                   onChange={(e) => setName(e.target.value)}
+                   placeholder="Your Name..."
+                   className="w-full bg-black/40 border border-zinc-600 rounded-xl p-3 text-white focus:border-cyan-400 focus:outline-none focus:shadow-[0_0_15px_rgba(34,211,238,0.2)] transition-shadow"
+                 />
+              </div>
+
+              <div className="space-y-2">
+                 <label className="text-xs font-digital text-cyan-400 tracking-widest">INTERESTS</label>
+                 <div className="flex flex-wrap gap-2">
+                    {INTEREST_OPTIONS.map(interest => (
+                       <button
+                         key={interest}
+                         onClick={() => toggleInterest(interest)}
+                         className={`px-3 py-2 rounded-lg text-xs font-digital tracking-wider border transition-all ${
+                           selectedInterests.includes(interest)
+                             ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.3)]'
+                             : 'bg-zinc-800/50 border-zinc-700 text-gray-500 hover:border-gray-500'
+                         }`}
+                       >
+                         {interest}
+                       </button>
+                    ))}
+                 </div>
+              </div>
+
+              <button 
+                onClick={finishOnboarding}
+                className="w-full py-4 mt-4 bg-white text-black font-digital font-bold tracking-[0.2em] rounded-xl hover:bg-cyan-400 hover:scale-[1.02] transition-all shadow-lg"
+              >
+                COMPLETE SETUP
+              </button>
+           </div>
+        </div>
+      )}
+
       <style>{`
         .perspective-1000 { perspective: 1000px; }
-        .perspective-500 { perspective: 500px; }
-        
         .text-shadow-cyan { text-shadow: 0 0 10px rgba(34,211,238,0.8); }
-        .rotate-y-12 { transform: rotateY(12deg); }
-        .rotate-y-0 { transform: rotateY(0deg); }
-
-        /* Drifting Stars */
-        @keyframes drift {
-          0% { transform: translateZ(0) translateY(0); opacity: 0; }
-          50% { opacity: 1; }
-          100% { transform: translateZ(200px) translateY(-50px); opacity: 0; }
-        }
-        .animate-drift { animation: drift linear infinite; }
-
-        /* Warp Stretch */
-        @keyframes warp-stretch {
-          0% { transform: translateZ(0) scale(1); opacity: 0; }
-          20% { opacity: 1; }
-          100% { transform: translateZ(800px) scale(1, 40); opacity: 0; }
-        }
-        .animate-warp-stretch { animation: warp-stretch linear infinite; }
-
-        /* Slow Spin for Star */
         .animate-spin-slow { animation: spin 10s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>

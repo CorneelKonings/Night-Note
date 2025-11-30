@@ -31,15 +31,6 @@ const INTEREST_OPTIONS = [
   "Finance", "Sports", "Gaming", "Art", "Health", "Space"
 ];
 
-// Mapping for display names
-const VOICE_MAPPING: Record<string, string> = {
-  'Fenrir': 'VOICE 01',
-  'Kore': 'VOICE 02',
-  'Puck': 'VOICE 03',
-  'Charon': 'VOICE 04',
-  'Zephyr': 'VOICE 05'
-};
-
 const Settings: React.FC<SettingsProps> = ({ 
   settings, 
   alarmTime, 
@@ -50,7 +41,8 @@ const Settings: React.FC<SettingsProps> = ({
   onStartSleep
 }) => {
   const themes: ThemeColor[] = ['cyan', 'amber', 'emerald', 'rose'];
-  const voices = ['Fenrir', 'Kore', 'Puck', 'Charon', 'Zephyr'];
+  // ONLY ZEPHYR IS ALLOWED
+  const voice = 'Zephyr';
 
   const [locationQuery, setLocationQuery] = useState(settings.location);
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
@@ -109,12 +101,15 @@ const Settings: React.FC<SettingsProps> = ({
     );
   };
 
-  const playVoicePreview = async (voice: string) => {
+  const playVoicePreview = async () => {
     if (isLoadingPreview || previewingVoice) return;
     
     setIsLoadingPreview(true);
     setPreviewingVoice(voice);
-    onUpdateSettings({ voiceName: voice });
+    // Ensure settings are synced to Zephyr
+    if (settings.voiceName !== voice) {
+      onUpdateSettings({ voiceName: voice });
+    }
 
     try {
       if (!audioContextRef.current) {
@@ -323,27 +318,21 @@ const Settings: React.FC<SettingsProps> = ({
 
           <div className="space-y-2">
             <label className="text-gray-500 text-xs font-digital tracking-widest block">NOVA VOICE MODEL</label>
-            <div className="grid grid-cols-3 gap-2">
-              {voices.map(voice => (
-                <button
-                  key={voice}
-                  onClick={() => playVoicePreview(voice)}
-                  disabled={isLoadingPreview && previewingVoice !== voice}
-                  className={`py-2 rounded-lg text-xs font-digital tracking-wider border transition-all relative overflow-hidden ${
-                    settings.voiceName === voice 
-                    ? 'bg-white text-black border-white' 
-                    : 'bg-transparent text-gray-500 border-zinc-800 hover:border-gray-500'
-                  }`}
-                >
-                  {VOICE_MAPPING[voice]}
-                  {previewingVoice === voice && (
-                     <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                        <div className="w-2 h-2 bg-black rounded-full animate-ping"></div>
-                     </div>
-                  )}
-                </button>
-              ))}
-            </div>
+            <button
+                onClick={playVoicePreview}
+                disabled={isLoadingPreview && previewingVoice !== voice}
+                className="w-full py-3 bg-white/5 border border-white/20 rounded-xl text-white font-digital tracking-wider hover:bg-white/10 transition-all flex items-center justify-between px-4 relative overflow-hidden"
+            >
+                <span>NOVA SYSTEM VOICE: ZEPHYR</span>
+                {isLoadingPreview ? (
+                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-ping"></div>
+                ) : (
+                    <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/30">ACTIVE</span>
+                )}
+            </button>
+            <p className="text-[10px] text-gray-600 font-mono pl-1">
+                * Voice model restricted to Zephyr for optimal system compatibility.
+            </p>
           </div>
 
           <div className="space-y-2">

@@ -7,7 +7,8 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 // Stores pre-loaded AudioBuffers for instant playback in Settings
 export const voicePreviewCache = new Map<string, AudioBuffer>();
 
-export const PRELOAD_VOICES = ['Fenrir', 'Kore', 'Puck', 'Charon', 'Zephyr'];
+// ONLY PRELOAD ZEPHYR
+export const PRELOAD_VOICES = ['Zephyr'];
 
 export const preloadVoicePreviews = async (audioContext: AudioContext) => {
   console.log("NOVA System: Initializing Voice Cache...");
