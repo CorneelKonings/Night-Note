@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 
 interface OnboardingProps {
@@ -41,62 +42,52 @@ const TOUR_STEPS = [
 ];
 
 const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
-  // Mode: 'INTRO' (The Movie) -> 'TOUR' (The Explanation) -> 'PROFILE' (The Setup)
   const [mode, setMode] = useState<'INTRO' | 'TOUR' | 'PROFILE'>('INTRO');
-  
-  // INTRO PHASES:
-  // 0: Black/Wait
-  // 1: "INTRODUCING"
-  // 2: TIMEWARP ACCELERATION (Stars stretch)
-  // 3: FULL HYPERDRIVE (Tunnel effect)
-  // 4: FLASH (Whiteout)
-  // 5: LOGO REVEAL (Slam)
-  // 6: NOVA REVEAL (Powered by)
-  // 7: READY (Show Button)
   const [introPhase, setIntroPhase] = useState(0);
-
-  // TOUR STEPS
   const [tourStep, setTourStep] = useState(0);
-  const [isSlideAnim, setIsSlideAnim] = useState(false); // For transition effect
-
-  // PROFILE STATE
+  const [isSlideAnim, setIsSlideAnim] = useState(false);
   const [name, setName] = useState("");
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [isExiting, setIsExiting] = useState(false);
-
-  // MOUSE TILT STATE
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
 
+  // Use refs to pass mutable state to the animation loop without triggering re-renders
+  const introPhaseRef = useRef(0);
+  const modeRef = useRef('INTRO');
+  
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // --- MOUSE PARALLAX HANDLER ---
+  useEffect(() => {
+    introPhaseRef.current = introPhase;
+  }, [introPhase]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
   const handleMouseMove = (e: React.MouseEvent) => {
     if (mode !== 'TOUR') return;
     const { clientX, clientY, currentTarget } = e;
     const { width, height } = currentTarget.getBoundingClientRect();
-    const x = (clientX / width - 0.5) * 20; // -10 to 10 deg
-    const y = (clientY / height - 0.5) * -20; // Invert Y
+    const x = (clientX / width - 0.5) * 20;
+    const y = (clientY / height - 0.5) * -20;
     setTilt({ x, y });
   };
 
-  // --- CINEMATIC TIMELINE ---
   useEffect(() => {
     if (mode === 'INTRO') {
       const timers: ReturnType<typeof setTimeout>[] = [];
-      
-      timers.push(setTimeout(() => setIntroPhase(1), 1000)); // "INTRODUCING"
-      timers.push(setTimeout(() => setIntroPhase(2), 4000)); // PRE-WARP
-      timers.push(setTimeout(() => setIntroPhase(3), 5000)); // HYPERDRIVE
-      timers.push(setTimeout(() => setIntroPhase(4), 8000)); // FLASH
-      timers.push(setTimeout(() => setIntroPhase(5), 8300)); // LOGO SLAM
-      timers.push(setTimeout(() => setIntroPhase(6), 9500)); // POWERED BY NOVA
-      timers.push(setTimeout(() => setIntroPhase(7), 11000)); // BUTTON
-
+      timers.push(setTimeout(() => setIntroPhase(1), 1000));
+      timers.push(setTimeout(() => setIntroPhase(2), 4000));
+      timers.push(setTimeout(() => setIntroPhase(3), 5000));
+      timers.push(setTimeout(() => setIntroPhase(4), 8000));
+      timers.push(setTimeout(() => setIntroPhase(5), 8300));
+      timers.push(setTimeout(() => setIntroPhase(6), 9500));
+      timers.push(setTimeout(() => setIntroPhase(7), 11000));
       return () => timers.forEach(t => clearTimeout(t));
     }
   }, [mode]);
 
-  // --- CANVAS PARTICLE SYSTEM ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -121,12 +112,13 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         this.x = (Math.random() - 0.5) * canvas!.width * 2;
         this.y = (Math.random() - 0.5) * canvas!.height * 2;
         this.z = Math.random() * 2000;
-        this.color = Math.random() > 0.7 ? '#ffffff' : '#22d3ee'; // White or Cyan
+        this.color = Math.random() > 0.7 ? '#ffffff' : '#22d3ee';
       }
 
       update(speed: number) {
         this.z -= speed;
-        if (this.z < 1) {
+        // Optimization: Ensure z doesn't get stuck near 0 causing divide by zero or infinity
+        if (this.z < 10) {
           this.z = 2000;
           this.x = (Math.random() - 0.5) * canvas!.width * 2;
           this.y = (Math.random() - 0.5) * canvas!.height * 2;
@@ -134,10 +126,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       }
 
       draw(c: CanvasRenderingContext2D, centerX: number, centerY: number, speed: number) {
-        const x2d = centerX + this.x * (800 / this.z);
-        const y2d = centerY + this.y * (800 / this.z);
+        if (this.z <= 0) return; // Safety check
+        
+        const scale = 800 / this.z;
+        const x2d = centerX + this.x * scale;
+        const y2d = centerY + this.y * scale;
 
-        if (x2d < 0 || x2d > canvas!.width || y2d < 0 || y2d > canvas!.height) return;
+        // Culling: Don't draw if way off screen
+        if (x2d < -100 || x2d > canvas!.width + 100 || y2d < -100 || y2d > canvas!.height + 100) return;
 
         const size = Math.max(0.5, (1 - this.z / 2000) * 3);
         const opacity = Math.min(1, (1 - this.z / 2000) + 0.2);
@@ -162,15 +158,16 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       }
     }
 
-    const starCount = 800;
+    const starCount = 600; // Reduced count slightly for better mobile performance
     const stars: Star[] = Array.from({ length: starCount }, () => new Star());
     
     let animationId: number;
     let currentSpeed = 0.5;
 
     const render = () => {
-      // CLEAR BACKGROUND (with trail effect if moving fast)
-      ctx.fillStyle = introPhase === 3 ? 'rgba(0,0,0,0.3)' : '#000000';
+      // CLEAR BACKGROUND
+      const phase = introPhaseRef.current;
+      ctx.fillStyle = phase === 3 ? 'rgba(0,0,0,0.3)' : '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const centerX = canvas.width / 2;
@@ -178,12 +175,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
       // SPEED LOGIC
       let targetSpeed = 0.5;
-      if (mode === 'INTRO') {
-        if (introPhase === 2) targetSpeed = 20; 
-        if (introPhase === 3) targetSpeed = 80; 
-        if (introPhase >= 4) targetSpeed = 0;   // Temp Stop
+      const m = modeRef.current;
+      if (m === 'INTRO') {
+        if (phase === 2) targetSpeed = 20; 
+        if (phase === 3) targetSpeed = 80; 
+        if (phase >= 4) targetSpeed = 0;
       } else {
-        // TOUR / PROFILE MODE: Cruise Speed
         targetSpeed = 1.5; 
       }
 
@@ -194,10 +191,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         star.draw(ctx, centerX, centerY, currentSpeed);
       });
 
-      // Keep rendering as long as we are NOT in the final exit fade
-      if (!isExiting) {
-        animationId = requestAnimationFrame(render);
-      }
+      animationId = requestAnimationFrame(render);
     };
 
     render();
@@ -206,7 +200,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       window.removeEventListener('resize', resize);
       cancelAnimationFrame(animationId);
     };
-  }, [introPhase, mode, isExiting]);
+  }, []); // Empty dependency array = init ONCE
 
   const startTour = () => {
     setMode('TOUR');
@@ -245,19 +239,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       onMouseMove={handleMouseMove}
     >
       
-      {/* BACKGROUND CANVAS (Visible throughout, except during flash) */}
       <canvas 
         ref={canvasRef}
         className={`absolute inset-0 z-0 transition-opacity duration-1000 ${introPhase === 4 ? 'opacity-0' : 'opacity-100'}`}
       />
 
-      {/* FLASH OVERLAY */}
       <div className={`fixed inset-0 bg-white z-50 pointer-events-none transition-opacity duration-300 ease-out ${introPhase === 4 ? 'opacity-100' : 'opacity-0'}`}></div>
 
-      {/* ====================================================================
-          INTRO SCENE
-      ==================================================================== */}
-      
+      {/* INTRO SCENE */}
       {mode === 'INTRO' && (
         <>
           <div className={`absolute z-20 transition-all duration-1000 ${introPhase === 1 ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
@@ -266,7 +255,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
           {introPhase >= 5 && (
             <div className="z-40 flex flex-col items-center">
-                {/* LOGO */}
                 <div className={`flex items-end gap-1 md:gap-3 relative transition-all duration-300 ${introPhase === 5 ? 'scale-100 opacity-100 translate-y-0' : 'scale-100'}`}>
                     <span className="text-6xl md:text-9xl font-digital font-black text-white tracking-tighter drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]">N</span>
                     <div className="flex flex-col items-center justify-end h-[60px] md:h-[90px] w-8 md:w-12 relative pb-1 md:pb-2">
@@ -280,7 +268,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                     <span className="text-6xl md:text-9xl font-digital font-black text-white tracking-tighter drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]">GHTNOTE</span>
                 </div>
 
-                {/* POWERED BY */}
                 <div className={`mt-8 transition-all duration-1000 ${introPhase >= 6 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
                     <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-6 py-2 rounded-full backdrop-blur-md shadow-[0_0_20px_rgba(34,211,238,0.2)]">
                     <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_10px_cyan]"></div>
@@ -290,7 +277,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                     </div>
                 </div>
 
-                {/* BUTTON */}
                 <div className={`mt-16 transition-all duration-1000 ${introPhase >= 7 ? 'opacity-100' : 'opacity-0'}`}>
                      <button onClick={startTour} className="px-8 py-4 bg-white text-black font-digital text-lg tracking-[0.2em] rounded-full hover:bg-cyan-400 hover:scale-105 transition-all shadow-[0_0_30px_rgba(255,255,255,0.4)]">BEGIN TOUR</button>
                 </div>
@@ -299,14 +285,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         </>
       )}
 
-      {/* ====================================================================
-          TOUR MODE
-      ==================================================================== */}
-
+      {/* TOUR MODE */}
       {mode === 'TOUR' && (
         <div className="z-50 w-full max-w-6xl flex flex-col items-center justify-center p-6 perspective-1000">
-           
-           {/* 3D TILT CARD */}
            <div 
              className={`bg-zinc-900/40 border border-white/10 p-12 rounded-3xl backdrop-blur-md shadow-2xl flex flex-col items-center text-center max-w-2xl transform transition-all duration-300 ${isSlideAnim ? 'opacity-0 translate-x-[-50px] scale-90' : 'opacity-100 translate-x-0 scale-100'}`}
              style={{
@@ -314,12 +295,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                boxShadow: `0 20px 50px rgba(0,0,0,0.5), ${-tilt.x}px ${tilt.y}px 20px rgba(34,211,238,0.1)`
              }}
            >
-              {/* ICON */}
               <div className="mb-8 transform transition-transform duration-500 hover:scale-110 hover:rotate-6">
                 {TOUR_STEPS[tourStep].icon}
               </div>
 
-              {/* TEXT */}
               <h2 className="text-4xl md:text-5xl font-digital text-white tracking-widest mb-6 drop-shadow-md">
                 {TOUR_STEPS[tourStep].title}
               </h2>
@@ -327,14 +306,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 {TOUR_STEPS[tourStep].desc}
               </p>
 
-              {/* PROGRESS */}
               <div className="flex items-center gap-3 mt-12 mb-8">
                  {TOUR_STEPS.map((_, i) => (
                    <div key={i} className={`h-1 transition-all duration-300 ${i === tourStep ? 'w-12 bg-cyan-400 shadow-[0_0_10px_cyan]' : 'w-4 bg-gray-700'}`}></div>
                  ))}
               </div>
 
-              {/* ACTION */}
               <button 
                 onClick={nextTourStep}
                 className="group relative px-10 py-3 overflow-hidden rounded-full bg-white text-black font-digital tracking-widest text-lg transition-all hover:scale-105"
@@ -346,10 +323,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         </div>
       )}
 
-      {/* ====================================================================
-          PROFILE MODE
-      ==================================================================== */}
-
+      {/* PROFILE MODE */}
       {mode === 'PROFILE' && (
         <div className="z-50 w-full max-w-md bg-zinc-900/80 p-8 rounded-3xl border border-zinc-700 backdrop-blur-xl animate-fadeInUp shadow-2xl">
            <h2 className="text-2xl font-digital text-white tracking-widest mb-6 text-center">INITIALIZE PROFILE</h2>

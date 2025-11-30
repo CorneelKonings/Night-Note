@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Settings as SettingsType, ThemeColor } from '../types';
 import { fetchTTSAudio, voicePreviewCache } from '../services/geminiService';
@@ -400,6 +401,21 @@ const Settings: React.FC<SettingsProps> = ({
                   </div>
                </div>
 
+               {/* WAKE WORD DETECTION */}
+               <div className="space-y-4">
+                 <div className="flex items-center justify-between">
+                    <label className="text-xs font-digital text-gray-500 tracking-widest uppercase">Wake Word "Hey Nova"</label>
+                    <div className="text-xs font-mono px-2 py-1 rounded border border-cyan-500/50 text-cyan-400 bg-cyan-500/10">
+                      ALWAYS ACTIVE
+                    </div>
+                 </div>
+                 <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                    <p className="text-gray-400 text-sm font-light leading-relaxed">
+                       Hands-free activation is enabled. Just say "Hey Nova" while on the clock screen to wake the assistant. Requires microphone permission.
+                    </p>
+                 </div>
+               </div>
+
                {/* SLEEP TRACKING */}
                <div className="space-y-4">
                  <div className="flex items-center justify-between">
@@ -422,6 +438,27 @@ const Settings: React.FC<SettingsProps> = ({
                        ENTER SLEEP MODE
                     </button>
                  </div>
+               </div>
+               
+               {/* EXTERNAL LINK */}
+               <div className="pt-4 border-t border-white/10">
+                 <a 
+                   href="https://nova-ai-inky-psi.vercel.app" 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="flex items-center justify-between group p-4 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-all hover:border-cyan-500/30"
+                 >
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-cyan-900/20 flex items-center justify-center border border-cyan-500/30 group-hover:bg-cyan-500/20 transition-colors">
+                            <svg className="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                        </div>
+                        <div>
+                            <div className="text-white font-digital tracking-widest text-sm group-hover:text-cyan-400 transition-colors">LEARN MORE</div>
+                            <div className="text-gray-500 text-xs font-mono">Visit NOVA AI HQ</div>
+                        </div>
+                    </div>
+                    <svg className="w-5 h-5 text-gray-500 group-hover:text-white transform group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                 </a>
                </div>
 
             </div>

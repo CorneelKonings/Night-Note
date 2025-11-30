@@ -8,6 +8,7 @@ import Subtitles from './components/Subtitles';
 import Onboarding from './components/Onboarding';
 import { transcribeHandwriting, fetchTTSAudio, generateNewsWeatherBriefing, preloadVoicePreviews } from './services/geminiService';
 import { SleepService } from './services/sleepService';
+import { useWakeWord } from './hooks/useWakeWord';
 import { AppMode, Alarm, Settings as SettingsType, SleepEvent } from './types';
 
 // ==================================================================================
@@ -18,10 +19,12 @@ const DEFAULT_ALARM_URL = "https://s17.aconvert.com/convert/p3r68-cdx67/kke26-g7
 
 const App: React.FC = () => {
   const loadSavedSettings = (): SettingsType => {
+    let loadedSettings: Partial<SettingsType> = {};
     try {
       const saved = localStorage.getItem('nightnote_settings');
-      if (saved) return JSON.parse(saved);
+      if (saved) loadedSettings = JSON.parse(saved);
     } catch (e) { console.error("Error loading settings", e); }
+
     return {
       userName: '',
       interests: [],
@@ -31,7 +34,9 @@ const App: React.FC = () => {
       location: '',
       voiceName: 'Zephyr', // Default to Zephyr
       temperatureUnit: 'C',
-      customAlarmAudio: null
+      customAlarmAudio: null,
+      ...loadedSettings,
+      isWakeWordEnabled: true, // FORCE ALWAYS ENABLED
     };
   };
 
@@ -76,6 +81,11 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('nightnote_settings', JSON.stringify(settings));
   }, [settings]);
+
+  // --- WAKE WORD DETECTION (HOOK) ---
+  useWakeWord(() => {
+    setMode(AppMode.VOICE_ASSISTANT);
+  }, mode === AppMode.CLOCK);
 
   useEffect(() => {
     const timer = setInterval(() => {

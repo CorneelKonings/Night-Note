@@ -25,6 +25,7 @@ export interface Settings {
   interests: string[];
   theme: ThemeColor;
   isSleepTrackingEnabled: boolean;
+  isWakeWordEnabled: boolean; // NEW: Hey Nova detection
   alarmVolume: number;
   location: string;
   voiceName: string;
