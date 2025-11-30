@@ -1,0 +1,8 @@
+{
+  "name": "NightNote",
+  "description": "A minimalist, futuristic alarm clock that reads your handwritten notes back to you when you wake up using Gemini Vision and TTS. Features a Live API voice assistant.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
