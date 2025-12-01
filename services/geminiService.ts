@@ -118,7 +118,8 @@ export const generateNewsWeatherBriefing = async (
         4. Weave the sleep data in gently if relevant.
         5. Structure:
            - "Good morning, ${userName}. This is NOVA."
-           - Weather update.
+           - Weather update .
+           -sleep data. (if theres no data skip it)
            - News headlines (connected flow, not a list).
            - Closing wish.
         
